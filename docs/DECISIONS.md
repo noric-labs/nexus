@@ -6,6 +6,16 @@ Commits are in the git history; the research is in the
 
 ## 2026-10-21
 
+### D-031 `host-up.sh` hang: shell precedence, not Minimal
+**Cause:** `cmd && setsid nohup job >log 2>&1 </dev/null &` backgrounds the whole `&&`
+list in a subshell. The redirects only cover the last command, so the subshell keeps the
+caller's stdout open until the job exits, and `min session exec` waits for EOF.
+**Ruled out on the Mac:** provisioning (a plain `exec` returns at once) and ssh mux
+(`controlmaster false`).
+**Measured locally with a captured stdout pipe:** the old form held the pipe 20.0 s; the
+fixed form, `cmd && { setsid nohup job … & }`, returned in 0.0 s.
+gominimal/inbox#1153 item 11 (ssh mux) can be downgraded to a docs note.
+
 ### D-030 Multi-VM topology: named VMs, a gateway per VM, `own_ip` lanes (proposed)
 **Findings** from the `gominimal/minimal` source at 248b259 (filed as gominimal/inbox#1153):
 - **Named VMs.** Sessions share one VM. More VMs come from `minvmd --vm NAME`, and

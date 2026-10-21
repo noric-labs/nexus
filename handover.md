@@ -59,18 +59,13 @@ section.
 
 ## Blockers and open decisions
 
-1. **`host-up.sh` hangs** at the first `min session exec … setsid nohup … &`.
-   - From the source: `exec` returns when its child exits, and the Mac `min` client
-     waits for ssh stdout EOF.
-   - Provisioning is ruled out (2026-10-21): `min session exec scoreboard 'echo ready'`
-     returns at once. So the backgrounded job is keeping the stream open.
-   - Next tests:
-     - `min session exec scoreboard 'setsid nohup sleep 300 >/dev/null 2>&1 </dev/null &'`.
-       If that hangs too, it's ssh-side.
-     - `ssh -G local-minvmd0 | grep -i control` and `~/.ssh/config`, for
-       ControlMaster/ControlPersist.
-   - Possible fix: close every inherited fd before backgrounding, or start the job from
-     a script that daemonizes fully (double fork).
+1. **`host-up.sh` hang: fixed (D-031).**
+   - Cause: `cmd && setsid nohup job … &` backgrounds the whole `&&` chain as a subshell.
+     That subshell keeps `exec`'s stdout open until the job exits, so `exec` never
+     returned.
+   - Fix: background only the job, `cmd && { setsid nohup job … & }`.
+   - Ruled out on the Mac: provisioning and ssh ControlMaster.
+   - Needs a re-run of `scripts/host-up.sh` to confirm end to end.
 2. **Multi-VM topology (D-030, proposed, needs sign-off).** The constraints:
    - sessions share one VM, and more VMs need `minvmd --vm NAME` / `min --vm NAME`;
    - `exec` needs `--vm`;

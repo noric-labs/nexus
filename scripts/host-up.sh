@@ -195,7 +195,9 @@ fi
 say "lanes will report to $SB_URL"
 
 if [ "$VIA" = exec ]; then
-    rexec "$SB" "cd /workbench && mkdir -p \$HOME/.nexus && setsid nohup bash scripts/scoreboard.sh --heat $HEAT --pit $PIT >\$HOME/.nexus/scoreboard.log 2>&1 </dev/null &"
+    # Prep first, then background ONLY the job. A trailing & after an && chain backgrounds
+    # the whole chain in a subshell that keeps exec's stdout open, so exec never returns.
+    rexec "$SB" "mkdir -p \$HOME/.nexus && cd /workbench && { setsid nohup bash scripts/scoreboard.sh --heat $HEAT --pit $PIT >\$HOME/.nexus/scoreboard.log 2>&1 </dev/null & }"
 else
     bg "run-$SB" min session run "$SB" scoreboard
 fi
@@ -249,7 +251,7 @@ compose into the session; use --via run --network host_ip (task packages do carr
         die "$s cannot reach $SB_URL (egress: --allow-dns-hosts $SB_HOST; see the policy above)"
     fi
     if [ "$VIA" = exec ]; then
-        rexec "$s" "cd /workbench && setsid nohup bash scripts/lane.sh >\$HOME/.nexus/lane.log 2>&1 </dev/null &"
+        rexec "$s" "cd /workbench && { setsid nohup bash scripts/lane.sh >\$HOME/.nexus/lane.log 2>&1 </dev/null & }"
     else
         bg "run-$s" min session run "$s" lane
     fi
