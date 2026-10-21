@@ -1,7 +1,7 @@
 # harness: `nexus-lane`
 
 The lane launcher for the Torment Nexus. It runs one game in tmux session `game` under one fault
-profile, detects failures (crash, sanitizer, hang), reports them to the scoreboard as schema-v1
+profile, detects failures (crash, sanitizer, hang, visual corruption), reports them to the scoreboard as schema-v1
 events, and restarts the game with the next seed until it is stopped. Interfaces are defined in
 [`docs/CONTRACTS.md`](../docs/CONTRACTS.md).
 
@@ -65,6 +65,9 @@ Extensions:
 | `NEXUS_HANG_SECS` | 60 | hang after the screen is unchanged this long (0 turns detection off) |
 | `NEXUS_HANG_MIN_KEYS` | 1 | ...and at least this many keys were sent in that window (0 = any frozen screen) |
 | `NEXUS_HEARTBEAT_SECS` | 5 | heartbeat period (the heat is refreshed at the same time) |
+| `NEXUS_VISUAL` | 1 | visual-corruption detector (0 turns it off) |
+| `NEXUS_BLANK_SECS` | 2 | visual: blank screen this long after a non-blank one |
+| `NEXUS_RESIZE_QUIET_SECS` | 0 | visual: skip the cursor, bad-cell and blank checks this long after a winch-storm resize |
 | `NEXUS_SCREEN_HZ` | 2 | screen frame rate, capped at 2 |
 | `NEXUS_RECYCLE_ON_HEAT` | 1 | restart the game with the next seed when the heat id changes (pit) |
 | `NEXUS_MAX_RUNS` | 0 | stop after N game runs (0 = never) |
@@ -77,8 +80,11 @@ Extensions:
 
 - **Games** are defined in `games.toml`: the command template (`{seed}`, `{seed32}` = `seed %
   2147483646 + 1` for frotz, `{stubs}`, `{home}`), version, fixed `size`, `cwd` (Brogue runs in
-  `$HOME/brogue`), `sanitizer`, `baseline_hashes` and `ok_exit_codes`. The entries are
-  `frotz-zork1`, `brogue`, `greed`, `dcss`, `stub-crasher`, `stub-asan` and `stub-hang`. The real-game
+  `$HOME/brogue`), `sanitizer`, `baseline_hashes`, `ok_exit_codes`, and for the visual detector
+  `status_regex` (Brogue `Depth:`, DCSS `Health:`) with `status_secs` (default 30). The entries are
+  `frotz-zork1`, `brogue`, `greed`, `dcss`, `stub-crasher`, `stub-asan`, `stub-hang` and
+  `stub-glitch` (prints garbage, blanks the screen or hides its status line on command; see
+  `stubs/glitch.c`). The real-game
   command lines have not been run here, because those packages are not installed in this sandbox.
 - **tmux**: the launcher starts the server with `-f tmux.conf` (manual window size, no status line,
   `remain-on-exit`), then sizes the window per game. Restarts reuse the session through
@@ -93,8 +99,30 @@ Extensions:
     with `FIU_PRNG_SEED`. If `fiu-run` is missing, the lane sends only `lane_end` with the detail
     `fault malloc-1pct skipped: fiu-run not found ...` and exits 2.
   - `winch-storm` is a seeded schedule (50-500 ms apart) of `resize-window` to a random size, plus
-    `SIGWINCH` to the game. Every other step goes back to the base size. Other contract profiles are
-    rejected the same way (`lane_end`, exit 2).
+    `SIGWINCH` to the game. Every other step goes back to the base size.
+  - `strace-enospc-save` and `strace-eintr-read` prefix the game with `strace -f --seccomp-bpf -o
+    /dev/null -e trace=... -e inject=SYSCALL:error=ERRNO:when=N+K --`. N and K are drawn from the
+    seed within the profile's `first`/`step` ranges. strace exits with the game's exit code and
+    re-raises its fatal signal, so classification is unchanged. LD_PRELOAD (crashtrace, seed, inherited)
+    is handed to the game with `strace -E` and removed from strace's own environment, so the
+    crashtrace handler never records strace itself. Before the lane starts, `strace` traces `true`
+    once; if strace is missing or ptrace/seccomp is denied, the lane ends with `lane_end` and exit 2.
+  - `rlimit-tight` prefixes `prlimit --as=268435456 --nofile=16 --fsize=65536 --stack=262144 --`.
+    Without prlimit, the supervisor calls `setrlimit` in the game process (soft = hard). The 256 MB
+    address-space cap breaks ASan builds, so use release builds.
+  - `time-warp` preloads `/usr/lib/faketime/libfaketime.so.1` with `FAKETIME="@2038-01-19 03:14:00
+    x60"` (not the `faketime` wrapper, which would replace LD_PRELOAD). If the library is missing,
+    the lane ends with exit 2.
+  - `keystorm`: every 20 agent keys (`@nexus_keys`), one hostile sequence from a seeded pool is
+    written with `tmux send-keys -H`: truncated ESC/CSI/OSC, a lone 0x9b, NUL, invalid UTF-8,
+    out-of-range SGR/X10 mouse reports, or a 4 KB bracketed paste. A third of the short ones get one
+    byte mutated. The pool never contains `^C ^\ ^Z ^Q ^S ^O ^V`, which the tty would turn into
+    signals or flow control. Injected bytes are not counted as agent keys. Each injection is
+    logged in `runs/NNNN/keystorm.log`, which is also added to replay bundles.
+  - Any other profile name ends the lane the same way (`lane_end`, exit 2).
+  - The supervisor restores the default SIGPIPE and SIGXFSZ actions before exec. Python ignores
+    both, and an ignored signal stays ignored across exec, so without this a game could never die
+    from them.
   - If `/usr/lib/torment/libtorment_seed.so` exists, the game also gets it in `LD_PRELOAD`, with
     `TORMENT_SEED` set.
 - **Detectors**:
@@ -109,8 +137,27 @@ Extensions:
     `print_stacktrace=1`, `detect_leaks=0` and `verify_asan_link_order=0`). The logs are polled every
     second, and each report is sent once its `SUMMARY` line appears. An ASan abort is reported as
     `sanitizer` only, not also as `crash`.
-  - Hang: the watchdog described under Environment. After a hang the game is SIGKILLed and
-    restarted. Under `winch-storm` the screen keeps changing, so hangs are not detected there.
+  - Hang: the watchdog described under Environment. After a hang the game is SIGKILLed (with its
+    descendants, e.g. the game under strace) and restarted. Under `winch-storm` the screen keeps
+    changing, so hangs are not detected there.
+  - Visual (`detectors.VisualDetector`): this runs on each screen capture while the game is alive.
+    The `detail` is the condition:
+    - `cursor-outside-pane`: x > cols or y >= rows. x == cols is tmux's normal pending-wrap state
+      after writing the last column.
+    - `bad-cells`: U+FFFD or a control character in a cell. tmux stores invalid UTF-8 as U+FFFD and
+      C1 controls as cells, and it interprets C0 bytes instead of storing them.
+    - `blank-screen`: every cell is blank for more than 2 s after a non-blank frame.
+    - `status-missing`: `status_regex` has been off screen for `status_secs` after it first
+      appeared in the run.
+
+    Each condition is reported at most once per run, with no stack hash, so the scoreboard key is
+    `visual|<condition>` per game.
+
+    Under `winch-storm` (12 s per stub, 3 seeds each, about 110 captures per run) the stubs
+    produced no hits. That included `stub-glitch`, which redraws on SIGWINCH with box and wide
+    glyphs. tmux reflow produced no U+FFFD and never put the cursor outside the pane. So the
+    resize quiet window (`NEXUS_RESIZE_QUIET_SECS`) defaults to off. A window of 1 s would turn
+    these checks off for the whole storm, because resizes come every 50–500 ms.
 - **`stack_hash`**: this is the first 12 hex characters of the sha1 of the top 5 in-project frames.
   Each frame is written as `func@basename(file)`, and the frames are joined by `\n`. Frames from
   sanitizer runtimes, libc, the loader, libstdc++, libgcc and ncurses/tinfo are dropped. When the

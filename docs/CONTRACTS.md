@@ -60,12 +60,12 @@ Each profile is a launcher plugin that wraps the game command:
 | `none` | control lane |
 | `malloc-1pct`, `malloc-0.1pct` | `fiu-run -x -c 'enable_random name=libc/mm/*,probability=P'`; `FIU_PRNG_SEED` is derived from the seed |
 | `io-save-5pct` | libfiu `posix/io/rw/*` at 0.05 and `posix/io/oc/*` at 0.02 |
-| `strace-enospc-save` | `strace -f --seccomp-bpf -o /dev/null -e trace=write,openat -e inject=write:error=ENOSPC:when=N+K` |
-| `strace-eintr-read` | `-e inject=read:error=EINTR:when=N+7` |
+| `strace-enospc-save` | `strace -f --seccomp-bpf -o /dev/null -e trace=write,openat -e inject=write:error=ENOSPC:when=N+K`. N (300–3000) and K (20–200) are drawn from the seed |
+| `strace-eintr-read` | `-e trace=read -e inject=read:error=EINTR:when=N+7`, with N (20–200) drawn from the seed |
 | `winch-storm` | a seeded SIGWINCH plus tmux resize schedule every 50–500 ms |
 | `rlimit-tight` | `prlimit --as=268435456 --nofile=16 --fsize=65536 --stack=262144 --` |
-| `time-warp` | `faketime -f "@2038-01-19 03:14:00 x60"` |
-| `keystorm` | every 20 agent keys, inject one hostile byte sequence (radamsa-mutated pool) |
+| `time-warp` | preload `/usr/lib/faketime/libfaketime.so.1` with `FAKETIME="@2038-01-19 03:14:00 x60"` (not the `faketime` wrapper) |
+| `keystorm` | every 20 agent keys (`@nexus_keys`), inject one hostile byte sequence with `tmux send-keys -H`. The pool is seeded, and a third of the short entries get one byte mutated |
 
 ## Event schema v1 (lane → scoreboard)
 
@@ -170,10 +170,36 @@ score(lane, heat) = Σ weight[type] × 0.5^(n−1)
 ## Harness MVP scope (M1)
 
 - **Fault profiles** are defined in `harness/faults.toml` (`NEXUS_FAULTS_FILE` overrides it).
-  The kinds are `none`, `libfiu` and `winch-storm`. A libfiu profile sets `points`,
-  `probability` and `delay_s`. With `delay_s > 0`, the game starts under `fiu-run -x` and the
+  The kinds are `none`, `libfiu`, `winch-storm`, `strace`, `rlimit`, `faketime` and
+  `keystorm`. A libfiu profile sets `points`, `probability` and `delay_s`. With `delay_s > 0`, the game starts under `fiu-run -x` and the
   points are enabled through `fiu-ctrl` once the delay has passed. That skips the startup
-  crashes, which all look the same. An unknown profile ends the lane with exit 2.
+  crashes, which all look the same. An unknown profile ends the lane with exit 2, and so does a
+  profile whose tool is missing: `fiu-run`, `strace` (or a failed preflight trace when ptrace is
+  denied), or the libfaketime library.
+- **The harness owns `LD_PRELOAD`** (D-014). No profile uses a wrapper that rewrites it. Under
+  strace, the merged `LD_PRELOAD` reaches the game through `strace -E` and is unset for strace
+  itself. strace exits with the game's code and re-raises the game's signal, so crash
+  classification is unchanged.
+- **rlimit:** `prlimit` is used when it is installed. Otherwise the supervisor calls `setrlimit`
+  in the game process (soft = hard). The supervisor restores SIGPIPE and SIGXFSZ to their
+  default actions before exec, because Python leaves them ignored. `--as=256M` breaks ASan
+  builds.
+- **keystorm:** the pool holds truncated ESC/CSI/OSC sequences, a lone 0x9b, NUL, invalid
+  UTF-8, out-of-range SGR and X10 mouse reports, and a 4 KB bracketed paste. It never includes
+  tty signal or flow-control bytes (`^C ^\ ^Z ^Q ^S ^O ^V`). Injected bytes do not count as
+  agent keys. Each injection is logged in `runs/NNNN/keystorm.log`.
+- **Visual corruption** (`type: "visual"`, weight 1): checked on the harness's tmux captures
+  while the game is alive. `detail` is one of these conditions:
+  - `cursor-outside-pane`: x > cols or y >= rows. x == cols is tmux's pending wrap.
+  - `bad-cells`: U+FFFD or a C0/C1 control character in a cell.
+  - `blank-screen`: all cells blank for more than 2 s after a non-blank frame.
+  - `status-missing`: the per-game `status_regex` in `games.toml` (Brogue `Depth:`, DCSS
+    `Health:`) has been missing for `status_secs` (default 30) after first appearing.
+
+  Each condition is reported at most once per run, with no `stack_hash`, so the scoring key is
+  `visual|<condition>` and the cluster is `<game>/visual|<condition>`. Under `winch-storm`,
+  the stub games gave no false positives, so the checks stay on during resizes.
+  `NEXUS_RESIZE_QUIET_SECS` can suspend them after each resize if real games need it.
 - **Crash events** (signal deaths) carry a `stack_hash` when `libtorment_crashtrace.so`
   (package `torment-crashtrace`) is preloaded: it writes the faulting stack as module+offset
   and the harness symbolizes it. Frames are `func@file` with DWARF, `func@<binary>` with only

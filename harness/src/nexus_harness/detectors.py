@@ -272,3 +272,98 @@ class HangWatchdog:
 
     def frozen_for(self, now: float) -> float:
         return now - self.changed_at
+
+
+# ---------------------------------------------------------------------------
+# Visual corruption
+# ---------------------------------------------------------------------------
+
+# Conditions (also the event `detail`, so the scoreboard key is `visual|<condition>`).
+CURSOR_OUTSIDE = "cursor-outside-pane"
+BAD_CELLS = "bad-cells"
+BLANK_SCREEN = "blank-screen"
+STATUS_MISSING = "status-missing"
+
+# What tmux leaves in a cell after bad output: U+FFFD for invalid UTF-8, and C1 controls
+# (U+0080..U+009F) printed as UTF-8. tmux interprets C0 bytes rather than storing them,
+# so C0/DEL only show up if a capture path ever stops doing that; they are checked anyway.
+_BAD_CELL_RE = re.compile("[�\x00-\x1f\x7f-\x9f]")
+
+
+@dataclass
+class VisualHit:
+    condition: str
+    report: str  # human-readable evidence for the replay bundle
+
+
+class VisualDetector:
+    """Flags visual corruption from tmux screen frames (the `/lanes/{id}/screen` shape):
+
+    - cursor-outside-pane: cursor x > cols or y >= rows (x == cols is tmux's pending-wrap
+      state after writing the last column, which is normal);
+    - bad-cells: U+FFFD or control characters in cells;
+    - blank-screen: every cell blank for more than `blank_secs` after a non-blank frame;
+    - status-missing: `status_regex` (the game's status line) not on screen for more than
+      `status_secs` after it was first seen this run.
+
+    Each condition is reported at most once per run (call `reset` per run). Nothing is
+    reported while the game is not alive. `quiet=True` (a winch-storm resize in flight)
+    suspends the cursor, bad-cell and blank checks for that frame and restarts the blank
+    timer."""
+
+    def __init__(self, status_regex: str | None = None, status_secs: float = 30.0,
+                 blank_secs: float = 2.0):
+        self.status_re = re.compile(status_regex) if status_regex else None
+        self.status_secs = status_secs
+        self.blank_secs = blank_secs
+        self.reset(0.0)
+
+    def reset(self, now: float) -> None:
+        self.reported: set[str] = set()
+        self.seen_content = False
+        self.blank_since: float | None = None
+        self.status_seen_at: float | None = None
+
+    def _hit(self, hits: list[VisualHit], cond: str, report: str) -> None:
+        if cond not in self.reported:
+            self.reported.add(cond)
+            hits.append(VisualHit(cond, report))
+
+    def observe(self, now: float, frame: dict, alive: bool = True,
+                quiet: bool = False) -> list[VisualHit]:
+        hits: list[VisualHit] = []
+        cols, rows = frame["cols"], frame["rows"]
+        cx, cy = frame["cursor"]
+        lines = frame["lines"]
+        blank = all(not ln.strip() for ln in lines)
+        status_now = bool(self.status_re and self.status_re.search("\n".join(lines)))
+        if status_now:
+            self.status_seen_at = now
+        if not alive:
+            self.blank_since = None
+            return hits
+        if not quiet:
+            if cx < 0 or cy < 0 or cx > cols or cy >= rows:
+                self._hit(hits, CURSOR_OUTSIDE, f"cursor ({cx},{cy}) outside {cols}x{rows}")
+            for y, ln in enumerate(lines):
+                m = _BAD_CELL_RE.search(ln)
+                if m:
+                    self._hit(hits, BAD_CELLS, f"row {y} col {m.start()}: U+{ord(m.group()):04X}"
+                              f" in {ln!r}")
+                    break
+        if blank and self.seen_content and not quiet:
+            if self.blank_since is None:
+                self.blank_since = now
+            elif now - self.blank_since > self.blank_secs:
+                self._hit(hits, BLANK_SCREEN,
+                          f"screen blank for {now - self.blank_since:.1f}s while the game runs")
+        else:
+            self.blank_since = None
+        if not blank:
+            self.seen_content = True
+        if (self.status_re and self.status_seen_at is not None and not status_now
+                and now - self.status_seen_at > self.status_secs):
+            self._hit(hits, STATUS_MISSING,
+                      f"status line /{self.status_re.pattern}/ missing for "
+                      f"{now - self.status_seen_at:.1f}s")
+        return hits

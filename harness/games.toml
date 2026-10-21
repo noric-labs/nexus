@@ -4,6 +4,9 @@
 # size = [cols, rows] of the tmux window. cwd is created if missing.
 # sanitizer = true sets ASAN_OPTIONS/UBSAN_OPTIONS with log_path and parses the logs.
 # baseline_hashes: sanitizer stack hashes reported locally but not sent (score 0).
+# status_regex: the game's status line; a visual failure (status-missing) when it has been
+#   off screen for status_secs (default 30) after first appearing in the run. Menus and
+#   full-screen inventories hide it too, so keep status_secs well above a menu visit.
 
 [games.frotz-zork1]
 command = ["dfrotz", "-m", "-w", "80", "-h", "24", "-s", "{seed32}", "/usr/share/zork/zork1.z3"]
@@ -16,6 +19,7 @@ version = "1.15.1"
 size = [100, 34]
 cwd = "{home}/brogue"
 sanitizer = true
+status_regex = "Depth:"
 
 # Release build for allocator faults: ASan replaces malloc, so libfiu's
 # libc/mm/* points never fire under brogue-ce-asan.
@@ -24,6 +28,7 @@ command = ["brogue-ce", "-t", "-s", "{seed32}", "-n"]
 version = "1.15.1"
 size = [100, 34]
 cwd = "{home}/brogue"
+status_regex = "Depth:"
 
 [games.greed]
 command = ["greed"]
@@ -36,6 +41,7 @@ version = "0.34.1"
 size = [80, 24]
 sanitizer = true
 baseline_hashes = []
+status_regex = "Health:"
 
 # Local stand-ins (build with `nexus-lane build-stubs`).
 [games.stub-crasher]
@@ -54,3 +60,54 @@ command = ["{stubs}/hang"]
 version = "stub"
 size = [80, 24]
 
+
+# Real-time; srand(time(NULL)), no seed flag. Writes ~/.local/share/nsnake/.
+# Needs >= 80x24 (exits 1 below). Enter starts Arcade Mode; arrows steer.
+[games.nsnake]
+command = ["nsnake-asan"]
+version = "3.0.1"
+size = [80, 24]
+sanitizer = true
+
+[games.nsnake-rel]
+command = ["nsnake"]
+version = "3.0.1"
+size = [80, 24]
+
+# Real-time; busy-waits (100% of a core per lane). srand(time(NULL)) + rand(), so the
+# torment-seed shim makes ghost moves deterministic. Needs >= 29x32; every exit is 0.
+[games.pacman]
+command = ["pacman4console-asan"]
+version = "1.3"
+size = [29, 32]
+sanitizer = true
+
+[games.pacman-rel]
+command = ["pacman4console"]
+version = "1.3"
+size = [29, 32]
+
+# Visual-corruption stand-in: g = garbage cells, b = blank screen, s = hide the status
+# line, x = exit 3, f = write 128 KB (SIGXFSZ under rlimit-tight). See stubs/glitch.c.
+[games.stub-glitch]
+command = ["{stubs}/glitch"]
+version = "stub"
+size = [80, 24]
+status_regex = "Depth:"
+status_secs = 5
+
+# Real-time (select() timeout); srandom(time(NULL)+37), which torment-seed makes
+# deterministic. Needs >= 24 rows (well not drawn below), no SIGWINCH handling.
+# Scores to $HOME/.bastetscores; needs HOME.
+[games.bastet]
+command = ["bastet-asan"]
+version = "0.43.2"
+size = [80, 24]
+cwd = "{home}/bastet"
+sanitizer = true
+
+[games.bastet-rel]
+command = ["bastet"]
+version = "0.43.2"
+size = [80, 24]
+cwd = "{home}/bastet"

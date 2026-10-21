@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import os
+import resource
 import signal
 import sys
 import time
@@ -41,10 +42,17 @@ def main(argv: list[str] | None = None) -> int:
     pid = os.fork()
     if pid == 0:
         try:
+            # Python ignores SIGPIPE and SIGXFSZ, and an ignored signal stays ignored across
+            # exec: restore the defaults so the game can die from them (rlimit --fsize).
+            for s in (signal.SIGPIPE, signal.SIGXFSZ):
+                signal.signal(s, signal.SIG_DFL)
             if cwd:
                 os.chdir(cwd)
+            # Fault profile rlimit-tight without prlimit: soft = hard, like prlimit --x=N.
+            for name, val in (spec.get("rlimits") or {}).items():
+                resource.setrlimit(getattr(resource, f"RLIMIT_{name}"), (int(val), int(val)))
             os.execvpe(spec["argv"][0], spec["argv"], env)
-        except OSError as e:
+        except (OSError, ValueError, AttributeError) as e:
             try:
                 (run_dir / "exec_error").write_text(f"{spec['argv'][0]}: {e}\n")
             finally:

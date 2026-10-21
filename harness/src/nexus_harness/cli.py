@@ -42,7 +42,7 @@ def cmd_screen(a) -> int:
     return 0
 
 
-STUBS = {"crasher": False, "hang": False, "asan": True}
+STUBS = {"crasher": False, "hang": False, "asan": True, "glitch": False}
 
 
 def build_stubs(out: Path | None = None, src: Path | None = None) -> Path:

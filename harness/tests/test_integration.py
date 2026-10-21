@@ -290,3 +290,152 @@ def test_crash_gets_stack_hash_from_crashtrace(board, stubs, tmp_path, crashtrac
     finally:
         rc, out = lane.stop()
     assert rc == 0, out
+
+
+# -- visual corruption and the new fault kinds ---------------------------------
+
+def events_of(lane, type_=None):
+    path = lane.out / "events.ndjson"
+    if not path.exists():
+        return []
+    ev = [json.loads(l) for l in path.read_text().splitlines()]
+    return [e for e in ev if type_ is None or e["type"] == type_]
+
+
+def test_visual_corruption_scores_once_per_condition(board, stubs, tmp_path):
+    lane = LaneProc(board, stubs, tmp_path, "l-vis", "stub-glitch")
+    try:
+        lane.wait_screen(r"Depth: 1")
+        lane.keys("g")  # garbage cells
+        wait_for(lambda: events_of(lane, "visual"), 10, what="bad-cells")
+        lane.keys("b")  # blank: blank-screen after 2 s, status-missing after 5 s
+        wait_for(lambda: len(failures(board, "l-vis")) >= 3, 15, what="three visual failures")
+        lane.keys("r")
+        lane.keys("g")
+        lane.keys("b")  # the same conditions again: debounced for this run
+        time.sleep(6)
+        vf = failures(board, "l-vis")
+        assert sorted(f["detail"] for f in vf) == ["bad-cells", "blank-screen", "status-missing"]
+        assert all(f["type"] == "visual" and not f["stack_hash"] for f in vf)
+        assert {f["cluster"] for f in vf} == {f"stub-glitch/visual|{f['detail']}" for f in vf}
+        assert lane_state(board, "l-vis")["score"] == pytest.approx(3.0)
+    finally:
+        rc, out = lane.stop()
+    assert rc == 0, out
+
+
+def test_rlimit_tight_kills_big_writer_with_sigxfsz(board, stubs, tmp_path):
+    lane = LaneProc(board, stubs, tmp_path, "l-rlim", "stub-glitch", "rlimit-tight",
+                    STUB_FILE=str(tmp_path / "big.out"))
+    try:
+        lane.wait_screen(r"Depth: 1")
+        spec = json.loads((lane.out / "runs" / "0000" / "spec.json").read_text())
+        if shutil.which("prlimit"):
+            assert spec["argv"][:2] == ["prlimit", "--as=268435456"]
+        else:
+            assert spec["rlimits"]["FSIZE"] == 65536
+        lane.keys("f")
+        cf = wait_for(lambda: failures(board, "l-rlim"), 10, what="SIGXFSZ crash")
+        assert cf[0]["type"] == "crash" and cf[0]["signal"] == 25 and cf[0]["detail"] == "SIGXFSZ"
+        wait_for(lambda: (lane.out / "runs" / "0001" / "pid").exists(), 15, what="restart")
+        lane.wait_screen(r"keys: 0")
+        lane.keys("x")  # exit 3 passes through prlimit unchanged
+        ee = wait_for(lambda: [f for f in failures(board, "l-rlim") if f["type"] == "error_exit"],
+                      10, what="error_exit")
+        assert ee[0]["exit_code"] == 3
+    finally:
+        rc, out = lane.stop()
+    assert rc == 0, out
+
+
+def test_keystorm_injects_hostile_bytes(board, stubs, tmp_path):
+    faults = tmp_path / "faults.toml"
+    faults.write_text('[faults.ks]\nkind = "keystorm"\nevery = 3\n')
+    inlog = tmp_path / "input.bin"
+    lane = LaneProc(board, stubs, tmp_path, "l-ks", "stub-glitch", "ks",
+                    NEXUS_FAULTS_FILE=str(faults), STUB_INPUT_LOG=str(inlog))
+    try:
+        lane.wait_screen(r"Depth: 1")
+        for _ in range(7):
+            lane.keys("a")
+            time.sleep(0.15)
+        log = lane.out / "runs" / "0000" / "keystorm.log"
+        wait_for(lambda: log.exists() and len(log.read_text().splitlines()) == 2, 10,
+                 what="two injections")
+        time.sleep(1.0)
+        assert len(log.read_text().splitlines()) == 2
+        injected = sum(int(l.rsplit("len=", 1)[1]) for l in log.read_text().splitlines())
+        data = inlog.read_bytes()
+        assert data.count(b"a") >= 7 and len(data) == 7 + injected
+        # Injected bytes are not agent keys.
+        assert subprocess.run(["tmux", "-L", lane.socket, "show-options", "-v", "-t", "game",
+                               "@nexus_keys"], capture_output=True, text=True).stdout.strip() == "7"
+    finally:
+        rc, out = lane.stop()
+    assert rc == 0, out
+
+
+def test_winch_storm_raises_no_visual_false_positives(board, stubs, tmp_path):
+    """Measured: the stand-ins (including one that redraws on SIGWINCH with wide glyphs)
+    produce no visual hits under the storm, so the resize quiet window defaults to off."""
+    lane = LaneProc(board, stubs, tmp_path, "l-storm", "stub-glitch", "winch-storm")
+    try:
+        lane.wait_screen(r"glitch stand-in")
+        for _ in range(8):
+            lane.keys("a")
+            time.sleep(1)
+        assert events_of(lane, "visual") == []
+    finally:
+        rc, out = lane.stop()
+    assert rc == 0, out
+
+
+@pytest.mark.parametrize("fault,tool,msg", [
+    ("strace-eintr-read", "strace", "strace not found"),
+    ("time-warp", "/usr/lib/faketime/libfaketime.so.1", "libfaketime.so.1 not found"),
+])
+def test_missing_fault_tool_ends_lane(board, stubs, tmp_path, fault, tool, msg):
+    if shutil.which(tool) or os.path.exists(tool):
+        pytest.skip(f"{tool} is installed")
+    lane = LaneProc(board, stubs, tmp_path, f"l-miss-{fault}", "stub-crasher", fault)
+    assert lane.p.wait(20) == 2
+    ev = events_of(lane)
+    assert [e["type"] for e in ev] == ["lane_end"] and msg in ev[0]["detail"]
+    lane.stop()
+
+
+@pytest.mark.skipif(not shutil.which("strace"), reason="strace missing")
+def test_strace_keeps_real_exit_status_and_preloads(board, stubs, tmp_path, crashtrace_lib):
+    """strace -f exits with the tracee's status and re-raises its fatal signal; the
+    crashtrace shim reaches the game (via -E), not strace."""
+    lane = LaneProc(board, stubs, tmp_path, "l-strace", "stub-crasher", "strace-eintr-read",
+                    NEXUS_CRASHTRACE_LIB=crashtrace_lib, STUB_CRASH_SITE="other")
+    try:
+        wait_for(lambda: (lane.out / "runs" / "0000" / "spec.json").exists() or
+                 lane.p.poll() is not None, 15, what="first run")
+        if lane.p.poll() is not None:
+            ev = events_of(lane)
+            pytest.skip(f"strace cannot trace here: {ev[-1]['detail'] if ev else ''}")
+        spec = json.loads((lane.out / "runs" / "0000" / "spec.json").read_text())
+        assert spec["argv"][0] == "strace" and "LD_PRELOAD" not in spec["env"]
+        assert any(a.startswith(f"LD_PRELOAD={crashtrace_lib}") for a in spec["argv"])
+        lane.wait_screen(r"keys: 0 / 3")
+        for _ in range(3):
+            lane.keys("x")
+            time.sleep(0.2)
+        cf = wait_for(lambda: failures(board, "l-strace"), 15, what="crash under strace")
+        assert cf[0]["type"] == "crash" and cf[0]["signal"] == 11
+        assert re.fullmatch(r"[0-9a-f]{12}", cf[0]["stack_hash"] or "")
+        st = json.loads((lane.out / "runs" / "0000" / "status.json").read_text())
+        assert st["signal"] == 11
+        with tarfile_open(cf[0]["replay"]) as tf:
+            rep = next(m for m in tf.getmembers() if m.name.endswith("/report.txt"))
+            assert "stub_other" in tf.extractfile(rep).read().decode()
+    finally:
+        rc, out = lane.stop()
+    assert rc == 0, out
+
+
+def tarfile_open(path):
+    import tarfile
+    return tarfile.open(path)

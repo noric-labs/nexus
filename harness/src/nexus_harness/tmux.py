@@ -90,6 +90,13 @@ class Tmux:
         self.bump(SENDS_OPTION, 1)
         return count
 
+    def send_hex(self, data: bytes, chunk: int = 512) -> None:
+        """Write raw bytes to the pane with `send-keys -H` (any byte, including NUL and
+        invalid UTF-8). Not counted in @nexus_keys: these are not agent keys. tmux rejects
+        a command over about 1 KB of arguments, so long payloads go in chunks."""
+        for i in range(0, len(data), chunk):
+            self.run("send-keys", "-t", self.target, "-H", *(f"{b:02x}" for b in data[i:i + chunk]))
+
     def bump(self, option: str, by: int = 1) -> int:
         n = self.counter(option) + by
         self.run("set-option", "-t", self.session, option, str(n), check=False)

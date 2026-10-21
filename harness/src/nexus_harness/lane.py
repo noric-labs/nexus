@@ -23,7 +23,8 @@ from pathlib import Path
 from . import config as cfgmod
 from . import crashtrace
 from .config import ConfigError, LaneEnv
-from .detectors import HangWatchdog, SanitizerReport, SanitizerWatcher, classify_exit
+from .detectors import (HangWatchdog, SanitizerReport, SanitizerWatcher, VisualDetector,
+                        classify_exit)
 from .events import EventSender, Identity, fetch_heat, http_json, make_event
 from .tmux import Tmux, TmuxError, frame_hash
 
@@ -31,6 +32,27 @@ log = logging.getLogger("nexus.lane")
 
 # Signals a keystroke can deliver to the game (^C, ^\); reported as agent_error, not crash.
 KEYBOARD_SIGNALS = {2, 3}
+
+
+def descendants(pid: int) -> list[int]:
+    """All live descendants of pid (from /proc), e.g. the game under a strace prefix."""
+    children: dict[int, list[int]] = {}
+    for d in os.listdir("/proc"):
+        if not d.isdigit():
+            continue
+        try:
+            with open(f"/proc/{d}/stat", "rb") as f:
+                stat = f.read()
+        except OSError:
+            continue
+        ppid = int(stat[stat.rindex(b")") + 2:].split()[1])
+        children.setdefault(ppid, []).append(int(d))
+    out, todo = [], [pid]
+    while todo:
+        for c in children.get(todo.pop(), []):
+            out.append(c)
+            todo.append(c)
+    return out
 
 
 class ScreenPoster:
@@ -120,7 +142,7 @@ class Lane:
             pass
         if report:
             members["report.txt"] = report
-        for name in ("spec.json", "status.json"):
+        for name in ("spec.json", "status.json", "keystorm.log"):
             if run_dir and (run_dir / name).exists():
                 members[name] = (run_dir / name).read_text()
         with tarfile.open(path, mode) as tf:
@@ -226,7 +248,17 @@ class Lane:
             preload.append(cfgmod.SEED_SHIM)
         if os.environ.get("LD_PRELOAD"):
             preload.append(os.environ["LD_PRELOAD"])
-        if preload:
+        prefix = list(plan.prefix)
+        unset = []
+        if plan.tracer:
+            # strace passes its environment on, but the shims must not load into strace
+            # itself (crashtrace would trace strace's own re-raised signal), so the
+            # preload goes to the tracee only, via -E.
+            if preload:
+                prefix += ["-E", "LD_PRELOAD=" + " ".join(preload)]
+            prefix.append("--")
+            unset.append("LD_PRELOAD")
+        elif preload:
             env["LD_PRELOAD"] = " ".join(preload)
         if game.sanitizer:
             common = "verify_asan_link_order=0:detect_leaks=0:symbolize=1:abort_on_error=0"
@@ -240,7 +272,12 @@ class Lane:
                 env["ASAN_SYMBOLIZER_PATH"] = sym
         if cwd:
             Path(cwd).mkdir(parents=True, exist_ok=True)
-        return {"argv": plan.prefix + argv, "env": env, "cwd": cwd}
+        spec = {"argv": prefix + argv, "env": env, "cwd": cwd}
+        if unset:
+            spec["unset"] = unset
+        if plan.rlimits:
+            spec["rlimits"] = dict(plan.rlimits)
+        return spec
 
     def _pid(self, run_dir: Path) -> int | None:
         try:
@@ -251,9 +288,11 @@ class Lane:
     def kill_game(self, run_dir: Path, wait: float = 5.0) -> dict | None:
         pid = self._pid(run_dir)
         if pid:
-            for sig in (signal.SIGKILL,):
+            # The game and anything under it: with a strace prefix the game is strace's
+            # child, and a killed tracer may leave its tracee running.
+            for p in [pid] + descendants(pid):
                 try:
-                    os.kill(pid, sig)
+                    os.kill(p, signal.SIGKILL)
                 except ProcessLookupError:
                     pass
         deadline = time.time() + wait
@@ -300,6 +339,15 @@ class Lane:
         wd = HangWatchdog(hang_secs, self.env.hang_min_keys)
         wd.reset(time.time(), self._keys())
         san = SanitizerWatcher(run_dir) if game.sanitizer else None
+        vis = (VisualDetector(game.status_regex, game.status_secs, self.env.blank_secs)
+               if self.env.visual else None)
+        if vis:
+            vis.reset(time.time())
+        storm_keys = None
+        if plan.keystorm_every:
+            storm_keys = {"base": self._keys(), "done": 0,
+                          "gen": cfgmod.keystorm_payloads(self.ident.seed)}
+        self._last_resize = 0.0
         storm = None
         if plan.winch_storm:
             self._storm_stop = False
@@ -343,7 +391,16 @@ class Lane:
                             self.screens.offer(frame)
                             last_posted = (h, now)
                         alive = self._pid(run_dir) is not None and self._status(run_dir) is None
-                        if wd.observe(now, h, self._keys(), alive):
+                        keys = self._keys()
+                        if vis:
+                            quiet = (plan.winch_storm and
+                                     now - self._last_resize < self.env.resize_quiet_secs)
+                            for hit in vis.observe(now, frame, alive, quiet=quiet):
+                                self.failure("visual", run_dir, report=hit.report,
+                                             detail=hit.condition)
+                        if storm_keys and alive:
+                            self._keystorm(storm_keys, keys, plan.keystorm_every, run_dir)
+                        if wd.observe(now, h, keys, alive):
                             self.failure("hang", run_dir, detail="screen-frozen")
                             log.info("hang: screen frozen %.1fs", wd.frozen_for(now))
                             self.kill_game(run_dir)
@@ -382,6 +439,25 @@ class Lane:
         return why
 
     _storm_stop = False
+    _last_resize = 0.0
+
+    def _keystorm(self, st: dict, keys: int, every: int, run_dir: Path) -> None:
+        """Inject one hostile byte sequence per `every` agent keys (at most 4 per check, so
+        a burst of keys does not turn into a flood)."""
+        due = min((keys - st["base"]) // every - st["done"], 4)
+        for _ in range(max(due, 0)):
+            name, data = next(st["gen"])
+            st["done"] += 1
+            try:
+                self.tmux.send_hex(data)
+            except TmuxError as e:
+                log.warning("keystorm send failed: %s", e)
+                return
+            with open(run_dir / "keystorm.log", "a") as f:
+                f.write(f"{time.time():.3f} keys={keys} {name} {data[:64].hex()}"
+                        f"{'...' if len(data) > 64 else ''} len={len(data)}\n")
+        if due < 0:  # the key counter went backwards (session recreated)
+            st["base"], st["done"] = keys, 0
 
     def _arm_faults(self, plan: cfgmod.FaultPlan, run_dir: Path, k: int) -> None:
         """Enable the profile's libfiu points in the running game via fiu-ctrl."""
@@ -406,6 +482,7 @@ class Lane:
         for delay, c, r in cfgmod.winch_schedule(self.ident.seed, base):
             if self._storm_stop or self.stop.wait(delay) or self._storm_stop:
                 return
+            self._last_resize = time.time()
             self.tmux.resize(c, r)
             pid = self._pid(run_dir)
             if pid:
@@ -447,6 +524,15 @@ class Lane:
             for lib in plan.preload:
                 if not os.path.exists(lib):
                     raise ConfigError(f"fault {plan.name}: preload library not found: {lib}")
+            if plan.preflight:  # e.g. strace: ptrace or seccomp may be denied here
+                try:
+                    r = subprocess.run(plan.preflight, capture_output=True, text=True, timeout=20)
+                    rc, err = r.returncode, r.stderr.strip()
+                except (OSError, subprocess.TimeoutExpired) as e:
+                    rc, err = -1, str(e)
+                if rc:
+                    raise ConfigError(f"fault {plan.name} skipped: {' '.join(plan.preflight)} "
+                                      f"failed (exit {rc}): {err[:200]}")
             if not shutil.which("tmux"):
                 raise ConfigError("tmux not found")
         except ConfigError as e:

@@ -1,6 +1,9 @@
 # Fault profiles for nexus-lane (NEXUS_FAULT picks one; NEXUS_FAULTS_FILE overrides this file).
 #
-# kind = "none" | "libfiu" | "winch-storm"
+# kind = "none" | "libfiu" | "winch-storm" | "strace" | "rlimit" | "faketime" | "keystorm"
+#
+# The harness owns LD_PRELOAD (D-014): fault libraries are merged with the crashtrace and
+# torment-seed shims. No profile uses a wrapper (fiu-run, faketime) that would overwrite it.
 #
 # libfiu:
 #   points       libfiu point name or glob, or a list of them (e.g. "libc/mm/*", "posix/io/rw/*")
@@ -8,6 +11,30 @@
 #   delay_s      seconds after the game starts before the points are enabled via fiu-ctrl.
 #                0 = enabled from exec. Faults during startup mostly kill the game before
 #                it draws anything, which repeats one uninteresting crash.
+#
+# strace: `strace -f --seccomp-bpf -o /dev/null -e trace=T -e inject=S:error=E:when=N+K --`
+#   syscall      the syscall to fail (S)
+#   error        errno name (E)
+#   trace        syscalls to trace (string or list); `syscall` is always added
+#   first        N, the first failing call: [lo, hi] picked by seed, or an int
+#   step         K, then every Kth call: [lo, hi] or an int
+#   strace exits with the game's status, or re-raises the game's signal, so crashes and
+#   error exits are classified as without it. The shims reach the game via `strace -E
+#   LD_PRELOAD=...`, not strace itself. The lane runs a preflight trace of `true` and ends
+#   (lane_end, exit 2) when strace is missing or ptrace/seccomp is denied.
+#
+# rlimit: `prlimit --as=.. --nofile=.. --fsize=.. --stack=.. --` (values in bytes / counts;
+#   also core, cpu, data, nproc, memlock). Without prlimit (util-linux) the supervisor calls
+#   setrlimit in the game process instead. --as=256M breaks ASan builds (shadow memory):
+#   pair with release builds.
+#
+# faketime: preloads `lib` (default /usr/lib/faketime/libfaketime.so.1) with FAKETIME set
+#   to `faketime`. Ends the lane (exit 2) when the library is missing.
+#
+# keystorm: every `every` agent keys (@nexus_keys), one hostile byte sequence from a seeded
+#   pool (truncated ESC/CSI/OSC, lone 0x9b, NUL, invalid UTF-8, out-of-range mouse reports,
+#   a 4 KB bracketed paste; a third get one byte mutated) is written with `tmux send-keys -H`.
+#   Injected bytes do not count as agent keys. Logged to runs/NNNN/keystorm.log.
 #
 # libfiu's malloc points never fire under ASan builds (ASan replaces malloc), so pair
 # libfiu memory profiles with release builds (e.g. game brogue-rel).
@@ -49,3 +76,36 @@ kind = "libfiu"
 points = "libc/mm/*"
 probability = 0.2
 delay_s = 5.0
+
+# Fail write() with ENOSPC late (after N in 300..3000 traced writes, then every K in
+# 20..200), to hit save files rather than startup.
+[faults.strace-enospc-save]
+kind = "strace"
+syscall = "write"
+error = "ENOSPC"
+trace = ["write", "openat"]
+first = [300, 3000]
+step = [20, 200]
+
+[faults.strace-eintr-read]
+kind = "strace"
+syscall = "read"
+error = "EINTR"
+trace = ["read"]
+first = [20, 200]
+step = 7
+
+[faults.rlimit-tight]
+kind = "rlimit"
+as = 268435456
+nofile = 16
+fsize = 65536
+stack = 262144
+
+[faults.time-warp]
+kind = "faketime"
+faketime = "@2038-01-19 03:14:00 x60"
+
+[faults.keystorm]
+kind = "keystorm"
+every = 20

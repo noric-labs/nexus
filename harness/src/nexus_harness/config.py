@@ -36,6 +36,11 @@ class LaneEnv:
     stubs_dir: Path = HARNESS_DIR / "stubs" / "bin"
     hang_secs: float = 60.0
     hang_min_keys: int = 1
+    visual: bool = True  # visual-corruption detector on/off
+    blank_secs: float = 2.0  # visual: blank screen this long after a non-blank one
+    # visual: hold off the cursor/bad-cell/blank checks this long after a winch-storm
+    # resize. 0 (off): the stub games showed no false positives under the storm.
+    resize_quiet_secs: float = 0.0
     heartbeat_secs: float = 5.0
     screen_hz: float = 2.0
     recycle_on_heat: bool = True
@@ -63,6 +68,9 @@ class LaneEnv:
             "NEXUS_TMUX_SOCKET": ("tmux_socket", str), "NEXUS_STUBS_DIR": ("stubs_dir", Path),
             "NEXUS_HANG_SECS": ("hang_secs", float), "NEXUS_HANG_MIN_KEYS": ("hang_min_keys", int),
             "NEXUS_HEARTBEAT_SECS": ("heartbeat_secs", float),
+            "NEXUS_VISUAL": ("visual", lambda v: v not in ("0", "false", "no")),
+            "NEXUS_BLANK_SECS": ("blank_secs", float),
+            "NEXUS_RESIZE_QUIET_SECS": ("resize_quiet_secs", float),
             "NEXUS_SCREEN_HZ": ("screen_hz", float), "NEXUS_AGENT_STATS": ("agent_stats", Path),
             "NEXUS_AGENT_EVENTS": ("agent_events", Path), "NEXUS_MAX_RUNS": ("max_runs", int),
             "NEXUS_RECYCLE_ON_HEAT": ("recycle_on_heat", lambda v: v not in ("0", "false", "no")),
@@ -87,6 +95,10 @@ class Game:
     baseline_hashes: set[str] = field(default_factory=set)
     ok_exit_codes: tuple[int, ...] = (0,)
     hang_secs: float | None = None
+    # Visual detector: a regex that the game's status line always matches while playing
+    # (Brogue "Depth:", DCSS "Health:"); flagged when it has been missing for status_secs.
+    status_regex: str | None = None
+    status_secs: float = 30.0
 
     def render(self, seed: int, stubs_dir: Path) -> tuple[list[str], str | None]:
         vars_ = {"seed": str(seed), "seed32": str(seed32(seed)), "stubs": str(stubs_dir),
@@ -112,7 +124,8 @@ def load_games(path: Path) -> dict[str, Game]:
             sanitizer=bool(g.get("sanitizer", False)),
             baseline_hashes=set(g.get("baseline_hashes", [])),
             ok_exit_codes=tuple(g.get("ok_exit_codes", (0,))),
-            hang_secs=g.get("hang_secs"))
+            hang_secs=g.get("hang_secs"), status_regex=g.get("status_regex") or None,
+            status_secs=float(g.get("status_secs", 30.0)))
     return games
 
 
@@ -124,14 +137,27 @@ def load_games(path: Path) -> dict[str, Game]:
 class FaultPlan:
     """What a fault profile does to the game: a command prefix, extra env, whether the
     launcher runs the winch-storm schedule, and libfiu commands to send with fiu-ctrl
-    `delay_s` seconds after the game starts (empty when faults are on from exec)."""
+    `delay_s` seconds after the game starts (empty when faults are on from exec).
+
+    The harness owns LD_PRELOAD (D-014): fault libraries go in `preload` and the launcher
+    merges them with the crashtrace and seed shims. When the prefix is a tracer
+    (`tracer=True`, strace) the merged LD_PRELOAD is handed to the tracee with strace's
+    `-E` instead, so the shims are not loaded into strace itself."""
     name: str
+    kind: str = "none"
     prefix: list[str] = field(default_factory=list)
     env: dict[str, str] = field(default_factory=dict)
     winch_storm: bool = False
     delayed_cmds: list[str] = field(default_factory=list)
     delay_s: float = 0.0
     preload: list[str] = field(default_factory=list)
+    tracer: bool = False
+    # setrlimit fallback when prlimit is missing: {"AS": bytes, ...}, applied by the
+    # supervisor in the child before exec (soft = hard, like prlimit --x=N).
+    rlimits: dict[str, int] = field(default_factory=dict)
+    keystorm_every: int = 0  # inject one hostile sequence every N agent keys
+    # Run once before the lane starts; a nonzero exit ends the lane (e.g. ptrace denied).
+    preflight: list[str] = field(default_factory=list)
 
 
 # Used when faults.toml is missing.
@@ -142,6 +168,12 @@ DEFAULT_FAULTS = {
     "winch-storm": {"kind": "winch-storm"},
 }
 
+FAKETIME_LIB = "/usr/lib/faketime/libfaketime.so.1"
+# prlimit option -> resource.RLIMIT_<name>
+RLIMIT_FIELDS = {"as": "AS", "nofile": "NOFILE", "fsize": "FSIZE", "stack": "STACK",
+                 "core": "CORE", "cpu": "CPU", "data": "DATA", "nproc": "NPROC",
+                 "memlock": "MEMLOCK"}
+
 
 def load_faults(path: Path | None) -> dict[str, dict]:
     if path is None or not Path(path).exists():
@@ -150,7 +182,25 @@ def load_faults(path: Path | None) -> dict[str, dict]:
         return tomllib.load(f).get("faults", {})
 
 
-def fault_plan(name: str, seed: int, which=shutil.which, faults: dict | None = None) -> FaultPlan:
+def _range(spec: dict, key: str, default: tuple[int, int]) -> tuple[int, int]:
+    v = spec.get(key, default)
+    if isinstance(v, int):
+        return v, v
+    lo, hi = int(v[0]), int(v[1])
+    return min(lo, hi), max(lo, hi)
+
+
+def strace_when(name: str, seed: int, spec: dict) -> tuple[int, int]:
+    """(N, K) for strace's `when=N+K`: fail the Nth matching call and every Kth after it.
+    N comes from `first` ([lo, hi] or an int) and K from `step`, both seeded."""
+    rng = random.Random(f"strace:{name}:{seed}")
+    n = rng.randint(*_range(spec, "first", (100, 1000)))
+    k = rng.randint(*_range(spec, "step", (50, 500)))
+    return max(1, n), max(1, k)
+
+
+def fault_plan(name: str, seed: int, which=shutil.which, faults: dict | None = None,
+               exists=os.path.exists) -> FaultPlan:
     """Raises ConfigError when the profile is unknown or its tool is missing."""
     faults = DEFAULT_FAULTS if faults is None else faults
     spec = faults.get(name)
@@ -158,9 +208,9 @@ def fault_plan(name: str, seed: int, which=shutil.which, faults: dict | None = N
         raise ConfigError(f"fault {name} not defined (have: {', '.join(faults)})")
     kind = spec.get("kind", "none")
     if kind == "none":
-        return FaultPlan(name)
+        return FaultPlan(name, kind)
     if kind == "winch-storm":
-        return FaultPlan(name, winch_storm=True)
+        return FaultPlan(name, kind, winch_storm=True)
     if kind == "libfiu":
         if not which("fiu-run"):
             raise ConfigError(f"fault {name} skipped: fiu-run not found (install libfiu)")
@@ -177,10 +227,109 @@ def fault_plan(name: str, seed: int, which=shutil.which, faults: dict | None = N
         env = {"FIU_PRNG_SEED": str(seed % 2147483647),
                "FIU_ENABLE": "\n".join(cmds) if delay <= 0 else "",
                "FIU_CTRL_FIFO": os.path.join(os.environ.get("TMPDIR", "/tmp"), "fiu-ctrl")}
-        return FaultPlan(name, env=env, preload=[str(libdir / "fiu_run_preload.so"),
-                                                 str(libdir / "fiu_posix_preload.so")],
+        return FaultPlan(name, kind, env=env, preload=[str(libdir / "fiu_run_preload.so"),
+                                                       str(libdir / "fiu_posix_preload.so")],
                          delayed_cmds=cmds if delay > 0 else [], delay_s=delay)
+    if kind == "strace":
+        exe = which("strace")
+        if not exe:
+            raise ConfigError(f"fault {name} skipped: strace not found (install strace)")
+        syscall = str(spec.get("syscall", "write"))
+        error = str(spec.get("error", "ENOSPC"))
+        trace = spec.get("trace", syscall)
+        trace = trace if isinstance(trace, str) else ",".join(trace)
+        if syscall not in trace.split(","):
+            trace = f"{trace},{syscall}"
+        n, k = strace_when(name, seed, spec)
+        prefix = ["strace", "-f", "--seccomp-bpf", "-o", "/dev/null", "-e", f"trace={trace}",
+                  "-e", f"inject={syscall}:error={error}:when={n}+{k}"]
+        return FaultPlan(name, kind, prefix=prefix, tracer=True,
+                         preflight=["strace", "-f", "--seccomp-bpf", "-o", "/dev/null",
+                                    "-e", f"trace={trace}", "--", "true"])
+    if kind == "rlimit":
+        limits = {}
+        for opt, res in RLIMIT_FIELDS.items():
+            if opt in spec:
+                limits[opt] = int(spec[opt])
+        if not limits:
+            raise ConfigError(f"fault {name}: rlimit profile sets no limits")
+        if which("prlimit"):
+            return FaultPlan(name, kind, prefix=["prlimit"] + [f"--{o}={v}" for o, v in
+                                                               limits.items()] + ["--"])
+        # util-linux missing: the supervisor calls setrlimit in the child instead.
+        return FaultPlan(name, kind, rlimits={RLIMIT_FIELDS[o]: v for o, v in limits.items()})
+    if kind == "faketime":
+        lib = str(spec.get("lib", FAKETIME_LIB))
+        if not exists(lib):
+            raise ConfigError(f"fault {name} skipped: {lib} not found (install libfaketime)")
+        ft = str(spec.get("faketime", "@2038-01-19 03:14:00 x60"))
+        # FAKETIME_DONT_RESET: children of the game keep the warped clock.
+        return FaultPlan(name, kind, env={"FAKETIME": ft, "FAKETIME_DONT_RESET": "1"},
+                         preload=[lib])
+    if kind == "keystorm":
+        every = int(spec.get("every", 20))
+        if every < 1:
+            raise ConfigError(f"fault {name}: keystorm every must be >= 1")
+        return FaultPlan(name, kind, keystorm_every=every)
     raise ConfigError(f"fault {name}: unknown kind {kind!r}")
+
+
+# ---------------------------------------------------------------------------
+# keystorm: hostile input bytes
+# ---------------------------------------------------------------------------
+
+KEYSTORM_POOL: list[tuple[str, bytes]] = [
+    ("csi-truncated", b"\x1b["),
+    ("csi-params-truncated", b"\x1b[1;"),
+    ("csi-sgr-truncated", b"\x1b[38;5"),
+    ("ss3-truncated", b"\x1bO"),
+    ("esc-lone", b"\x1b"),
+    ("osc-unterminated", b"\x1b]0;"),
+    ("csi-8bit", b"\x9b"),
+    ("csi-8bit-params", b"\x9b2J"),
+    ("nul", b"\x00"),
+    ("utf8-bad-continuation", b"\xc3\x28"),
+    ("utf8-ff", b"\xff"),
+    ("utf8-truncated", b"\xe2\x82"),
+    ("utf8-surrogate", b"\xed\xa0\x80"),
+    ("utf8-overlong", b"\xc0\xaf"),
+    ("mouse-sgr-huge", b"\x1b[<0;9999;9999M"),
+    ("mouse-sgr-zero", b"\x1b[<3;0;0m"),
+    ("mouse-sgr-negative", b"\x1b[<64;-1;-1M"),
+    ("mouse-x10-overflow", b"\x1b[M\xff\xff\xff"),
+    ("paste-4k", b""),  # built per draw: bracketed paste with 4 KB of seeded bytes
+]
+
+
+# Bytes the tty (cbreak mode) turns into signals or flow control: ^C ^\ ^Z ^Q ^S ^O ^V.
+# A keystorm must not produce them: they would read as agent_error or as a frozen screen.
+TTY_SPECIAL = frozenset(b"\x03\x1c\x1a\x11\x13\x0f\x16")
+
+
+def keystorm_payloads(seed: int):
+    """Seeded stream of (name, bytes) hostile key sequences. About a third of the
+    short entries get one byte mutated (flipped, duplicated or dropped)."""
+    rng = random.Random(f"keystorm:{seed}")
+    while True:
+        name, data = rng.choice(KEYSTORM_POOL)
+        if name == "paste-4k":
+            # Nothing from TTY_SPECIAL.
+            body = bytes(rng.choice(b"abcdefghijklmnopqrstuvwxyz0123456789 \r\n\t\x1b\x7f")
+                         for _ in range(4096))
+            yield name, b"\x1b[200~" + body + b"\x1b[201~"
+            continue
+        if len(data) > 1 and rng.random() < 0.33:
+            i = rng.randrange(len(data))
+            op = rng.randrange(3)
+            if op == 0:
+                mut = data[:i] + bytes([data[i] ^ (1 << rng.randrange(8))]) + data[i + 1:]
+            elif op == 1:
+                mut = data[:i] + data[i:i + 1] * 2 + data[i + 1:]
+            else:
+                mut = data[:i] + data[i + 1:]
+            if not any(b in TTY_SPECIAL for b in mut):
+                data, name = mut, name + "~"
+        yield name, data
 
 
 def winch_schedule(seed: int, base: tuple[int, int], n: int | None = None):
