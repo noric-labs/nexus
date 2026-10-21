@@ -10,9 +10,12 @@ from dataclasses import dataclass
 
 # Lane terminal size per game (CONTRACTS.md: 80x24, or 100x34 for Brogue) and the
 # page grid used for that size (PLAN.md wall decision).
-SIZES = {"brogue": (100, 34)}
+# Keep in sync with harness/games.toml `size`.
+SIZES = {"brogue": (100, 34), "brogue-rel": (100, 34), "pacman": (29, 32), "pacman-rel": (29, 32)}
 DEFAULT_SIZE = (80, 24)
-GRIDS = {(80, 24): (8, 8), (100, 34): (6, 6)}  # (cols, rows) of panes per page
+# (cols, rows) of panes per page. At 5x10 px cells the 16" screen is ~691x216 cells; a
+# framed pane is size + 2, so 29x32 Pacman fits 22x6 (one spare column of panes kept).
+GRIDS = {(80, 24): (8, 8), (100, 34): (6, 6), (29, 32): (20, 6)}
 
 # Default pane command. `min session exec` runs on the Mac host; `{session}` is the
 # Minimal session name of the lane. Override with --cmd (see README).
