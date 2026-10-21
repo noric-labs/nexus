@@ -10,7 +10,7 @@
  *     exchanges and elides every screen except the newest, so the tokens sent per
  *     model call stay flat however long the lane runs;
  *   - pacing: send_keys never fires sooner than NEXUS_ACTION_INTERVAL_MS after the
- *     previous one (default 5000), so model latency counts toward the 5 s cadence;
+ *     previous one (default 1000), so model latency counts toward the 1 s floor;
  *   - caps: NEXUS_MAX_TURNS and NEXUS_MAX_TOKENS (tokens_in + tokens_out); when
  *     either is hit, tools are blocked and pi is asked to shut down;
  *   - a stats file (NEXUS_AGENT_STATS, default $NEXUS_OUT/agent/stats.json) that the
@@ -40,7 +40,7 @@ const num = (name: string, dflt: number) => {
 
 const TARGET = env.NEXUS_TMUX_TARGET || "game";
 const TMUX_SOCKET = env.NEXUS_TMUX_SOCKET || ""; // tmux -L name; empty = default socket
-const INTERVAL_MS = num("NEXUS_ACTION_INTERVAL_MS", 5000);
+const INTERVAL_MS = num("NEXUS_ACTION_INTERVAL_MS", 1000);
 const SETTLE_MS = num("NEXUS_SETTLE_MS", 400);
 const KEEP_TURNS = Math.max(1, num("NEXUS_KEEP_TURNS", 3));
 const MAX_TURNS = num("NEXUS_MAX_TURNS", 0); // 0 = unlimited

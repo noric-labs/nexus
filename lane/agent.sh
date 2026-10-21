@@ -1,6 +1,6 @@
 #!/bin/sh
 # Lane agent entry point: pi (RPC mode, game.ts tools only) playing the game in tmux
-# session `game`, paced at one action per ~5 s. Runs in the foreground until stopped,
+# session `game`, paced at no more than one action per second. Runs in the foreground until stopped,
 # capped, or NEXUS_AGENT_SECONDS elapses; the harness owns restarts across heats.
 #
 # Outputs (all under $NEXUS_OUT/agent/):
@@ -20,7 +20,7 @@ LANE_DIR=$(cd "$(dirname "$0")" && pwd)
 : "${NEXUS_MODEL:=@cf/qwen/qwen3-30b-a3b-fp8}"
 : "${NEXUS_GAME:=}"
 : "${NEXUS_INFERENCE_URL:=http://100.64.255.254:8899/workers-ai/v1}"
-: "${NEXUS_ACTION_INTERVAL_MS:=5000}"
+: "${NEXUS_ACTION_INTERVAL_MS:=1000}"
 : "${NEXUS_KEEP_TURNS:=3}"
 : "${NEXUS_MAX_TURNS:=0}"
 : "${NEXUS_MAX_TOKENS:=0}"

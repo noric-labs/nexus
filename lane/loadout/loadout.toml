@@ -30,7 +30,7 @@ NEXUS_LANE_DIR       = { inherit = true, default = "/workbench/lane" }
 
 # Agent: pi -> broker -> Cloudflare Workers AI. Boxes send placeholder auth.
 NEXUS_INFERENCE_URL      = { inherit = true, default = "http://100.64.255.254:8899/workers-ai/v1" }
-NEXUS_ACTION_INTERVAL_MS = { inherit = true, default = "5000" }
+NEXUS_ACTION_INTERVAL_MS = { inherit = true, default = "1000" }
 NEXUS_KEEP_TURNS         = { inherit = true, default = "3" }
 NEXUS_MAX_TURNS          = { inherit = true, default = "0" }
 NEXUS_MAX_TOKENS         = { inherit = true, default = "0" }

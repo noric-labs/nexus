@@ -6,10 +6,14 @@
 #   scripts/host-up.sh [--dry-run] [-n N] [--lanes FILE] [--live] [--heat 15m] [--pit 1m]
 #                      [--port 8080] [--network own_ip|host_ip] [--lane-network own_ip|host_ip]
 #                      [--via exec|run] [--egress open|strict] [--no-faults] [--one-page]
+#                      [--play-style explore|win]
 #
 #   --dry-run   print every command (min, uv, ...) and run none of them
 #   --no-faults every lane's fault becomes `none`: the agents play the games unencumbered
 #               (the detectors still run, so real bugs still score)
+#   --play-style explore: agents try odd commands (bug hunting, lane/prompts/system.md).
+#               win: agents play for progress (system-win.md). Default: win with --no-faults,
+#               else explore.
 #   --one-page  the wall shows every lane on a single tab, with no Hot tab (wall-gen --one-page);
 #               don't run wall-pager with it
 #   -n N        start the first N lanes of the lanes file (default 3)
@@ -54,7 +58,7 @@ set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 STATE=$ROOT/.build/host
-DRY=0 NOFAULTS=0 WALL_ARGS=() N=3 LANES_FILE=$ROOT/scripts/lanes.txt LIVE=0 HEAT=15m PIT=1m PORT=8080
+DRY=0 NOFAULTS=0 STYLE= WALL_ARGS=() N=3 LANES_FILE=$ROOT/scripts/lanes.txt LIVE=0 HEAT=15m PIT=1m PORT=8080
 NET=own_ip LANE_NET= VIA=exec EGRESS=open
 SB=${NEXUS_SB_SESSION:-scoreboard}
 PREFIX=${NEXUS_LANE_PREFIX:-}
@@ -68,6 +72,7 @@ while [ $# -gt 0 ]; do
         --dry-run) DRY=1 ;;
         --no-faults) NOFAULTS=1 ;;
         --one-page) WALL_ARGS+=(--one-page) ;;
+        --play-style) STYLE=$2; shift ;;
         -n) N=$2; shift ;;
         --lanes) LANES_FILE=$2; shift ;;
         --live) LIVE=1 ;;
@@ -129,6 +134,8 @@ box cannot reach the host broker at 100.64.255.254 (gominimal/inbox#1153, D-035)
 [ "$NET" = host_ip ] && [ "$LANE_NET" = own_ip ] && die "own_ip lanes cannot reach a host_ip scoreboard"
 case $VIA in exec|run) ;; *) die "--via must be exec or run" ;; esac
 case $EGRESS in open|strict) ;; *) die "--egress must be open or strict" ;; esac
+[ -n "$STYLE" ] || { [ "$NOFAULTS" = 1 ] && STYLE=win || STYLE=explore; }
+case $STYLE in explore|win) ;; *) die "--play-style must be explore or win" ;; esac
 [[ $N =~ ^[0-9]+$ ]] && [ "$N" -ge 1 ] || die "-n needs a positive number"
 if [ "$VIA" = run ] && [ "$NET" = own_ip ]; then
     die "--via run needs --network host_ip: a task in an own_ip session runs in a second box that
@@ -283,7 +290,7 @@ for spec in "${LANES[@]}"; do
     fi
     # Lane config for scripts/lane.sh. Written into the box because `min session run` forwards
     # no client env, and so a restart inside the session needs no flags.
-    rexec "$s" "mkdir -p \$HOME/.nexus && printf %s\\\\n NEXUS_LANE_ID=$id NEXUS_GAME=$game NEXUS_FAULT=$fault NEXUS_SEED=$seed NEXUS_MODEL=$model NEXUS_SCOREBOARD_URL=$SB_URL NEXUS_MOCK=$MOCK > \$HOME/.nexus/lane.env"
+    rexec "$s" "mkdir -p \$HOME/.nexus && printf %s\\\\n NEXUS_LANE_ID=$id NEXUS_GAME=$game NEXUS_FAULT=$fault NEXUS_SEED=$seed NEXUS_MODEL=$model NEXUS_SCOREBOARD_URL=$SB_URL NEXUS_MOCK=$MOCK NEXUS_PLAY_STYLE=$STYLE > \$HOME/.nexus/lane.env"
     if [ "$first" = 1 ] && [ "$VIA" = exec ]; then
         # The session's packages come from [session] in minimal.toml, sideload games included.
         # Sideload packages are verified in task `packages`, not yet in [session]: check once.

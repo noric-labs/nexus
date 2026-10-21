@@ -5,7 +5,7 @@ model config, the driver, a mock inference server, and the `nexus-lane` Minimal 
 
 | File | What |
 | --- | --- |
-| `game.ts` | pi extension: tools `send_keys(keys)` and `screen()`, context trimming, 5 s pacing, turn/token caps, `stats.json` |
+| `game.ts` | pi extension: tools `send_keys(keys)` and `screen()`, context trimming, 1 s pacing, turn/token caps, `stats.json` |
 | `models.json` | pi provider `nexus` → broker route `/workers-ai/v1`, the 4 Workers AI models |
 | `agent.sh` | lane entry point: env defaults, renders `models.json`, execs `agent.py` |
 | `agent.py` | RPC driver: starts pi, sends the goal prompt, re-prompts when a run settles, backs off on errors, restarts pi |
@@ -26,7 +26,7 @@ pi --mode rpc --offline --no-builtin-tools --no-extensions --no-skills --no-prom
    --provider nexus --model "$NEXUS_MODEL" --thinking "$NEXUS_THINKING" --no-session
 ```
 
-The model only has `send_keys` and `screen`. `send_keys` waits until 5 s after the previous
+The model only has `send_keys` and `screen`. `send_keys` waits until 1 s after the previous
 action (model latency counts toward that), types the keys, waits 400 ms, and returns the
 new screen, so a model usually calls only `send_keys`. Key notation: literal text, plus
 `<Enter> <Esc> <Tab> <BSpace> <Space> <Up> <Down> <Left> <Right> <Home> <End> <PgUp> <PgDn>
@@ -62,10 +62,11 @@ for the harness to forward. pi's stderr goes to `$NEXUS_OUT/agent/pi.stderr.log`
 | Var | Default | Meaning |
 | --- | --- | --- |
 | `NEXUS_MODEL` | `@cf/qwen/qwen3-30b-a3b-fp8` | one of the 4 ids in `models.json` |
-| `NEXUS_GAME` | – | picks `prompts/<game>.md` |
+| `NEXUS_GAME` | – | picks `prompts/<game>.md`, else the name without `-rel`, else `default.md` |
+| `NEXUS_PLAY_STYLE` | `explore` | `explore`: `prompts/system.md`, odd input welcome (bug hunting); `win`: `prompts/system-win.md`, play for progress (`host-up.sh --no-faults`) |
 | `NEXUS_OUT` | `/out` (`/home/out` in the loadout) | artifacts |
 | `NEXUS_INFERENCE_URL` | `http://100.64.255.254:8899/workers-ai/v1` | OpenAI-compatible base URL |
-| `NEXUS_ACTION_INTERVAL_MS` | `5000` | minimum gap between `send_keys` calls |
+| `NEXUS_ACTION_INTERVAL_MS` | `1000` | minimum gap between `send_keys` calls |
 | `NEXUS_KEEP_TURNS` | `3` | exchanges kept in context |
 | `NEXUS_MAX_TURNS`, `NEXUS_MAX_TOKENS` | `0` (off) | caps; when hit, tools are blocked, pi shuts down, `stats.capped` is set and `agent.sh` exits 0 |
 | `NEXUS_THINKING` | `low` | pi thinking level (clamped per model) |

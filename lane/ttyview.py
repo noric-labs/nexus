@@ -5,10 +5,13 @@
 relays stdout/stderr but gives the command no terminal, and `tmux attach` refuses
 to run without one ("open terminal failed: not a terminal"). This helper makes
 the terminal inside the session: it opens a pty sized to the game window, runs
-`tmux attach -r -t game` on it, and copies the pty's output to stdout. The
-wall pane renders that escape stream as if it were attached directly.
+`tmux attach -f ignore-size -t game` on it, and copies the pty's output to stdout.
+The wall pane renders that escape stream as if it were attached directly.
 
-stdin is ignored (the view is read-only). Runs until tmux detaches or exits,
+stdin is ignored, so the view is read-only in practice. It does not attach with `-r`:
+tmux 3.7 resolves a bare `send-keys` to the session's client, and when that is a
+read-only client it refuses with "client is read-only", which blocked every agent key
+while the wall was open (D-036). `ignore-size` keeps the view from resizing the game. Runs until tmux detaches or exits,
 which ends the exec; the wall's retry loop re-attaches.
 
     min session exec l-001 'exec python3 /workbench/lane/ttyview.py'
@@ -55,7 +58,7 @@ def main() -> int:
     pid, fd = pty.fork()
     if pid == 0:
         fcntl.ioctl(0, termios.TIOCSWINSZ, struct.pack("HHHH", rows, cols, 0, 0))
-        os.execvp(tmux[0], tmux + ["attach-session", "-r", "-t", target])
+        os.execvp(tmux[0], tmux + ["attach-session", "-f", "ignore-size", "-t", target])
     out = sys.stdout.buffer
     while True:
         try:

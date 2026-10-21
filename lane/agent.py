@@ -31,6 +31,9 @@ GAME = env.get("NEXUS_GAME", "")
 MODEL = env.get("NEXUS_MODEL", "@cf/qwen/qwen3-30b-a3b-fp8")
 PROVIDER = env.get("NEXUS_PROVIDER", "nexus")
 THINKING = env.get("NEXUS_THINKING", "low")
+# explore: try odd commands and menus (bug hunting, prompts/system.md); win: play for
+# progress and score (prompts/system-win.md). host-up --no-faults selects win.
+STYLE = "win" if env.get("NEXUS_PLAY_STYLE", "explore") == "win" else "explore"
 DEADLINE = float(env.get("NEXUS_AGENT_SECONDS", "0") or 0)
 PI = env.get("NEXUS_PI_BIN", "pi")
 CONTINUE_MSG = env.get(
@@ -75,7 +78,9 @@ def goal_prompt():
     override = env.get("NEXUS_GOAL_PROMPT")
     if override:
         return override
-    return read_prompt(GAME) or read_prompt("default")
+    # Release builds share the game's prompt: brogue-rel -> brogue.md.
+    base = GAME[:-4] if GAME.endswith("-rel") else GAME
+    return read_prompt(GAME) or read_prompt(base) or read_prompt("default")
 
 
 def pi_cmd():
@@ -83,7 +88,7 @@ def pi_cmd():
            "--no-builtin-tools", "--no-extensions", "--no-skills", "--no-prompt-templates",
            "--no-context-files", "--no-themes",
            "-e", os.path.join(LANE, "game.ts"),
-           "--system-prompt", os.path.join(LANE, "prompts", "system.md"),
+           "--system-prompt", os.path.join(LANE, "prompts", "system-win.md" if STYLE == "win" else "system.md"),
            "--provider", PROVIDER, "--model", MODEL, "--thinking", THINKING]
     if env.get("NEXUS_PI_SESSION_DIR"):
         cmd += ["--session-dir", env["NEXUS_PI_SESSION_DIR"]]
@@ -188,7 +193,7 @@ def main():
     goal = goal_prompt()
     backoff = 0.0
     restarts = 0
-    log(f"lane={env.get('NEXUS_LANE_ID', '')} game={GAME} model={PROVIDER}/{MODEL} stats={STATS}")
+    log(f"lane={env.get('NEXUS_LANE_ID', '')} game={GAME} style={STYLE} model={PROVIDER}/{MODEL} stats={STATS}")
     while not stop.is_set() and time_left() and not capped():
         pi = Pi()
         log(f"pi started pid={pi.p.pid} (restart #{restarts})")

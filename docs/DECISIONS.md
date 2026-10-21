@@ -6,6 +6,23 @@ Commits are in the git history; the research is in the
 
 ## 2026-10-21
 
+### D-036 The wall blocked every agent key; 1 s pacing; `win` play style
+**Cause of the "stalled" lanes:** `lane/ttyview.py` attached with `tmux attach -r`. In each
+lane that read-only viewer was the only tmux client, and tmux 3.7 resolves a bare
+`send-keys` to it and refuses: `client is read-only`. With the wall open, every agent key
+failed. In the 12-lane no-fault run after 26 min: 5–7 actions and 79–273 `send_keys`
+errors per lane, about 220 s per action. The 60 s stall aborts were a side effect.
+**Fix:** ttyview attaches with `-f ignore-size` and no `-r`. It never writes to the pty,
+so the view stays read-only in practice.
+**Pacing:** `NEXUS_ACTION_INTERVAL_MS` defaults to 1000 (was 5000), so model latency sets
+the pace. 12 lanes come to about 180 req/min per model, half the 360/min tested in D-027.
+**Play style:** `NEXUS_PLAY_STYLE=explore` (default, `prompts/system.md`, bug hunting) or
+`win` (`prompts/system-win.md`, play for progress). `host-up.sh --no-faults` selects `win`;
+`--play-style` overrides it.
+**Prompts:** release builds fall back to the base game's prompt (`brogue-rel` → `brogue.md`).
+New prompts for nSnake, Pacman and Bastet. Bastet's keys come from its source: Drop is the
+keypad Enter, which tmux's `<Enter>` does not send, so the prompt says to use `<Down>`.
+
 ### D-035 Live lanes run `host_ip`; the D-030 gateway is dropped
 **Measured on min 0.7.1** (VM `default`, test box `gw-test`):
 

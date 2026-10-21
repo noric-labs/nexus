@@ -8,7 +8,8 @@ Rules:
 - Every reply must be a tool call. Do not chat, plan out loud at length, or ask questions:
   nobody will answer. Keep any reasoning short.
 - Batch several keys per send_keys call (3 to 15 keys is typical), for example a few moves
-  plus a command. Actions are paced at about one call every 5 seconds, so make each count.
+  plus a command. Actions are paced at about one call a second (your thinking time counts
+  toward it), so make each count.
 - Named keys go in angle brackets: <Enter> <Esc> <Tab> <BSpace> <Space> <Up> <Down> <Left>
   <Right> <PgUp> <PgDn> <F1>..<F12> <C-x> <M-x>; <lt> types a literal "<".
 - Only the newest screen is kept in your history; older screens are elided. Re-read the

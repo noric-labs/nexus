@@ -19,7 +19,7 @@ bugs.
 1. The race UI in a real browser (WebAudio, SSE reconnect), and the wall on the real display.
 2. Several VMs (`host-up.sh --vms K`).
 
-The authoritative history is [docs/DECISIONS.md](docs/DECISIONS.md) (D-001..D-035). The
+The authoritative history is [docs/DECISIONS.md](docs/DECISIONS.md) (D-001..D-036). The
 interfaces are in [docs/CONTRACTS.md](docs/CONTRACTS.md), and the plan and milestone status
 in [docs/PLAN.md](docs/PLAN.md). The research doc is at
 https://claude.ai/code/artifact/b10bce23-195d-4e31-8c3d-0b65f2d6ed4a.
@@ -111,6 +111,8 @@ scripts/host-down.sh                       # tear down
 
 ## Gotchas
 
+- **A read-only tmux client blocks `send-keys` (tmux 3.7).** Never attach a viewer to a
+  lane's `game` session with `-r`: the agent's keys fail with "client is read-only" (D-036).
 - **The "exec hang" was not exec (D-031..D-034).**
   - `host-up` was silently waiting on a scoreboard whose `go build` had died for lack of
     egress. It now shows progress and fails fast with the log tail.
