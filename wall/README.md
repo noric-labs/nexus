@@ -17,6 +17,10 @@ project uses only the Python stdlib):
   The last page of each size is padded with empty panes, so every pane on a page is the
   same size. A size whose lanes fit on one page gets the smallest near-square grid that
   holds them instead (3 lanes: 2x2), so a small run gets big panes.
+- **One page.** `wall-gen --one-page` (or `host-up.sh --one-page`) puts every lane, up to 64,
+  on a single tab sorted by game, in the smallest grid that holds them, with no Hot tab.
+  Mixed sizes share the tab, so each game is clipped or padded to its pane. Run no
+  `wall-pager` with it: there is nothing to cycle.
 - Each pane is named `lane · game · fault` (for example `l-042 · brogue · malloc-1pct`).
 - The layouts have no `default_tab_template` and no plugin panes, so there is no tab bar
   and no status bar. `config.kdl` turns pane frames on, starts in locked mode and turns off

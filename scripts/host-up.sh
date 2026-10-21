@@ -5,9 +5,13 @@
 #
 #   scripts/host-up.sh [--dry-run] [-n N] [--lanes FILE] [--live] [--heat 15m] [--pit 1m]
 #                      [--port 8080] [--network own_ip|host_ip] [--lane-network own_ip|host_ip]
-#                      [--via exec|run] [--egress open|strict]
+#                      [--via exec|run] [--egress open|strict] [--no-faults] [--one-page]
 #
 #   --dry-run   print every command (min, uv, ...) and run none of them
+#   --no-faults every lane's fault becomes `none`: the agents play the games unencumbered
+#               (the detectors still run, so real bugs still score)
+#   --one-page  the wall shows every lane on a single tab, with no Hot tab (wall-gen --one-page);
+#               don't run wall-pager with it
 #   -n N        start the first N lanes of the lanes file (default 3)
 #   --lanes F   lanes file, "id game fault seed [model]" per line (default scripts/lanes.txt)
 #   --live      pi talks to Workers AI through the host broker (100.64.255.254:8899). Without it
@@ -50,7 +54,7 @@ set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 STATE=$ROOT/.build/host
-DRY=0 N=3 LANES_FILE=$ROOT/scripts/lanes.txt LIVE=0 HEAT=15m PIT=1m PORT=8080
+DRY=0 NOFAULTS=0 WALL_ARGS=() N=3 LANES_FILE=$ROOT/scripts/lanes.txt LIVE=0 HEAT=15m PIT=1m PORT=8080
 NET=own_ip LANE_NET= VIA=exec EGRESS=open
 SB=${NEXUS_SB_SESSION:-scoreboard}
 PREFIX=${NEXUS_LANE_PREFIX:-}
@@ -62,6 +66,8 @@ SB_HOSTS="proxy.golang.org sum.golang.org ${NEXUS_SB_ALLOW_HOSTS:-}"
 while [ $# -gt 0 ]; do
     case $1 in
         --dry-run) DRY=1 ;;
+        --no-faults) NOFAULTS=1 ;;
+        --one-page) WALL_ARGS+=(--one-page) ;;
         -n) N=$2; shift ;;
         --lanes) LANES_FILE=$2; shift ;;
         --live) LIVE=1 ;;
@@ -148,6 +154,7 @@ LANES=()
 while read -r id game fault seed model _; do
     case $id in ''|'#'*) continue ;; esac
     [ -n "${seed:-}" ] || die "$LANES_FILE: need 'id game fault seed [model]', got: $id $game $fault"
+    [ "$NOFAULTS" = 1 ] && fault=none
     for v in "$id" "$game" "$fault" "$seed" "${model:-$MODEL}"; do
         valid "$v" || die "$LANES_FILE: unsafe value '$v'"
     done
@@ -319,7 +326,7 @@ done
 # lane/ttyview.py makes a pty in the box and streams the read-only attach (see wall/README.md).
 VIEW_CMD="min session exec {session} 'exec python3 /workbench/lane/ttyview.py'"
 run uv run --project "$ROOT/wall" wall-gen --lanes-file "$STATE/lanes.json" --out "$ROOT/wall/out" \
-    --session-fmt "$PREFIX{lane_id}" --cmd "$VIEW_CMD"
+    --session-fmt "$PREFIX{lane_id}" --cmd "$VIEW_CMD" ${WALL_ARGS[@]+"${WALL_ARGS[@]}"}
 
 cat <<EOF
 

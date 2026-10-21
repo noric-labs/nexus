@@ -26,6 +26,17 @@ def hot_layout(lanes: list[c.Lane], cfg: dict, slot_dir: str) -> str:
     return c.render_tab(c.HOT_TAB, slots, cols, rows)
 
 
+def one_page(lanes: list[c.Lane]) -> list[dict]:
+    """Every lane on a single tab, sorted by game, in the smallest grid that holds them.
+
+    Mixed terminal sizes share the tab, so each pane shows its game clipped or padded."""
+    group = sorted(lanes, key=lambda l: (l.game, c.natural_key(l.id)))
+    cols, rows = c.fit_grid(len(group), (8, 8))
+    if len(group) > cols * rows:
+        sys.exit(f"wall-gen: --one-page holds at most {cols * rows} lanes, got {len(group)}")
+    return [{"tab": f"all {len(group)}", "size": None, "grid": [cols, rows], "lanes": group}]
+
+
 def paginate(lanes: list[c.Lane]) -> list[dict]:
     """Group lanes by terminal size (then game) and chunk each group into grid pages."""
     by_size: dict[tuple[int, int], list[c.Lane]] = {}
@@ -65,6 +76,8 @@ def main(argv=None):
                    help="seconds between re-attach attempts; 0 runs the command once (default 3)")
     p.add_argument("--hot-size", type=int, default=None,
                    help="lanes in the Hot tab (default: the lane count, at most 64, an 8x8 grid)")
+    p.add_argument("--one-page", action="store_true",
+                   help="all lanes on one tab (max 64) and no Hot tab; run no wall-pager with it")
     a = p.parse_args(argv)
 
     lanes = c.load_lanes(a.scoreboard, a.lanes_file)
@@ -82,7 +95,7 @@ def main(argv=None):
         if f.startswith("page-") and f.endswith(".kdl"):
             os.remove(os.path.join(a.out, f))
 
-    pages = paginate(lanes)
+    pages = one_page(lanes) if a.one_page else paginate(lanes)
     tabs, index = [], {"config": cfg, "pages": [], "lanes": {}}
     for n, pg in enumerate(pages, 1):
         cols, rows = pg["grid"]
@@ -103,7 +116,7 @@ def main(argv=None):
     with open(os.path.join(a.out, "hot.kdl"), "w") as f:
         f.write(c.render_layout([hot]))
     with open(os.path.join(a.out, "wall.kdl"), "w") as f:
-        f.write(c.render_layout(tabs + [hot]))
+        f.write(c.render_layout(tabs if a.one_page else tabs + [hot]))
     with open(os.path.join(a.out, "index.json"), "w") as f:
         json.dump(index, f, indent=1)
     print(f"wall-gen: {len(lanes)} lanes -> {len(pages)} pages + {c.HOT_TAB} ({len(index['hot'])} lanes) in {a.out}/")
