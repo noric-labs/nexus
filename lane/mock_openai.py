@@ -8,6 +8,14 @@ logged as one JSON line so you can check that tokens per turn stay flat.
 
     python3 lane/mock_openai.py --port 8899 [--log /tmp/mock.ndjson] [--text-every N]
                                 [--fail-rate 0.05] [--latency 0.5]
+                                [--text-tool-shape qwen|glm|gptoss|cycle]
+
+--text-tool-shape replays the Workers AI failure shapes from D-016 instead of structured
+tool_calls (to exercise lane/toolfix.py):
+    qwen    content '', tool_calls null, reasoning_content '<tool_call>\n{"name": ..., "arguments": {...}}\n</tool_call>'
+    glm     content '<tool_call>send_keys("<Down>")', tool_calls []
+    gptoss  content '{"keys":"j"}', tool_calls []   (send_keys only: a bare {} is not recoverable)
+    cycle   rotates through the three, one per request
 
 Routes: POST /v1/chat/completions and /workers-ai/v1/chat/completions, GET .../models.
 Point lane/agent.sh at it with NEXUS_INFERENCE_URL=http://127.0.0.1:8899/v1.
@@ -38,22 +46,44 @@ lock = threading.Lock()
 state = {"n": 0}
 
 
+SHAPES = ("qwen", "glm", "gptoss")
+
+
+def text_shape(args, n):
+    s = args.text_tool_shape
+    return SHAPES[n % len(SHAPES)] if s == "cycle" else s
+
+
+def shaped_message(shape, name, payload):
+    """The assistant message fields a text-tool-call model sends instead of tool_calls."""
+    if shape == "qwen":
+        return {"content": "", "tool_calls": None, "reasoning_content":
+                "<tool_call>\n" + json.dumps({"name": name, "arguments": payload}) + "\n</tool_call>"}
+    if shape == "glm":
+        arg = json.dumps(payload["keys"]) if "keys" in payload else ""
+        return {"content": f"<tool_call>{name}({arg})", "tool_calls": []}
+    if shape == "gptoss":
+        return {"content": json.dumps(payload, separators=(",", ":")), "tool_calls": []}
+    raise ValueError(shape)
+
+
 def pick(body, args):
-    """Return (tool_name, arguments_dict) or (None, text)."""
+    """Return (tool_name, arguments_dict, n) or (None, text, n)."""
     with lock:
         state["n"] += 1
         n = state["n"]
     tools = {t.get("function", {}).get("name") for t in body.get("tools") or []}
     if args.text_every and n % args.text_every == 0:
-        return None, "I will keep exploring."
-    if "screen" in tools and n % 4 == 1:
-        return "screen", {}
+        return None, "I will keep exploring.", n
+    shape = text_shape(args, n) if args.text_tool_shape else None
+    if "screen" in tools and n % 4 == 1 and shape != "gptoss":
+        return "screen", {}, n
     if "send_keys" in tools:
         k = random.choice(KEYS)
         if random.random() < 0.3:
             k += random.choice(KEYS)
-        return "send_keys", {"keys": k}
-    return None, "no tools offered"
+        return "send_keys", {"keys": k}, n
+    return None, "no tools offered", n
 
 
 class H(BaseHTTPRequestHandler):
@@ -90,7 +120,8 @@ class H(BaseHTTPRequestHandler):
         if a.fail_rate and random.random() < a.fail_rate:
             return self._json(429, {"error": {"message": "mock rate limit", "type": "rate_limit"}})
 
-        name, payload = pick(body, a)
+        name, payload, n = pick(body, a)
+        shape = text_shape(a, n) if (a.text_tool_shape and name) else None
         prompt_tokens = max(1, len(raw) // 4)
         completion_tokens = 12 if name else 8
         usage = {"prompt_tokens": prompt_tokens, "completion_tokens": completion_tokens,
@@ -102,11 +133,16 @@ class H(BaseHTTPRequestHandler):
             with lock, open(a.log, "a") as f:
                 f.write(json.dumps({"ts": time.time(), "model": model, "bytes": len(raw),
                                     "messages": len(body.get("messages") or []),
-                                    "prompt_tokens": prompt_tokens, "reply": name or "text",
+                                    "prompt_tokens": prompt_tokens, "reply": name or "text", "shape": shape,
                                     "args": payload if name else None}) + "\n")
 
         if not body.get("stream"):
             msg = {"role": "assistant", "content": None if name else payload}
+            if shape:
+                msg.update(shaped_message(shape, name, payload))
+                return self._json(200, {"id": cid, "object": "chat.completion", "created": int(time.time()),
+                                        "model": model, "usage": usage,
+                                        "choices": [{"index": 0, "message": msg, "finish_reason": "stop"}]})
             if name:
                 msg["tool_calls"] = [{"id": call_id, "type": "function",
                                       "function": {"name": name, "arguments": json.dumps(payload)}}]
@@ -132,7 +168,17 @@ class H(BaseHTTPRequestHandler):
 
         try:
             chunk({"role": "assistant", "content": ""})
-            if name:
+            if shape:
+                # Split each text field in three, the way a real stream dribbles tokens.
+                fields = shaped_message(shape, name, payload)
+                tc = fields.pop("tool_calls")
+                for f, v in fields.items():
+                    if v:
+                        step = max(1, len(v) // 3)
+                        for i in range(0, len(v), step):
+                            chunk({f: v[i:i + step], "tool_calls": tc})
+                chunk({}, "stop")
+            elif name:
                 args_s = json.dumps(payload)
                 chunk({"tool_calls": [{"index": 0, "id": call_id, "type": "function",
                                        "function": {"name": name, "arguments": ""}}]})
@@ -158,6 +204,8 @@ def main():
     p.add_argument("--text-every", type=int, default=0, help="every Nth reply is plain text (ends the run)")
     p.add_argument("--fail-rate", type=float, default=0.0, help="fraction of requests answered with 429")
     p.add_argument("--latency", type=float, default=0.3, help="seconds before each reply")
+    p.add_argument("--text-tool-shape", choices=SHAPES + ("cycle",), default=None,
+                   help="emit tool calls as text in this model's failure shape (see docstring)")
     a = p.parse_args()
     H.args = a
     srv = ThreadingHTTPServer((a.host, a.port), H)

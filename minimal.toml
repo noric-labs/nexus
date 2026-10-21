@@ -13,7 +13,7 @@ locked_commit = "4f163b52467e3dc4b2713ded70f9249b6862b3a2"
 [[upstream.sideload]]
 repo = "https://github.com/noric-labs/torment-pkgs"
 branch = "main"
-locked_commit = "3741acb96f99741ea701f360d69bb56febd45f3d"
+locked_commit = "436ef3075742e193b5a51f8d91dfe4fc0babbdae"
 
 [defaults]
 state_key = "nexus"

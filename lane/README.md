@@ -11,6 +11,8 @@ model config, the driver, a mock inference server, and the `nexus-lane` Minimal 
 | `agent.py` | RPC driver: starts pi, sends the goal prompt, re-prompts when a run settles, backs off on errors, restarts pi |
 | `prompts/` | `system.md` plus one goal prompt per `NEXUS_GAME` (`default.md` otherwise) |
 | `mock_openai.py` | OpenAI-compatible mock that answers with `send_keys`/`screen` tool calls |
+| `toolfix.py` | local proxy between pi and the broker that turns text-encoded tool calls into `tool_calls` (D-016) |
+| `test_toolfix.py`, `test_toolfix_e2e.sh` | toolfix unit/proxy tests and the pi + tmux end-to-end check (mock only) |
 | `loadout/` | the `nexus-lane` loadout (`loadout.toml`, `hooks/on-activate.sh`, `vendor-pi.sh`) |
 | `ttyview.py` | read-only view of the lane's `game` tmux session through a pty, for the wall (see below) |
 
@@ -72,6 +74,7 @@ for the harness to forward. pi's stderr goes to `$NEXUS_OUT/agent/pi.stderr.log`
 | `NEXUS_TMUX_TARGET`, `NEXUS_TMUX_SOCKET` | `game`, default socket | tmux target / `-L` socket |
 | `NEXUS_PI_BIN` | `pi` on PATH, else `$NEXUS_PI_PREFIX/node_modules/.bin/pi` | |
 | `NEXUS_RPC_LOG` | off | path to tee pi's RPC stdout |
+| `NEXUS_TOOLFIX` | `1` | run `toolfix.py` in front of `NEXUS_INFERENCE_URL` and point pi at it; `0` = pi talks to the URL directly |
 
 ## Testing without Cloudflare
 
@@ -83,7 +86,27 @@ cat /tmp/out/agent/stats.json
 ```
 
 `--fail-rate 0.3` makes the mock answer 30% of requests with a 429; `--text-every N` makes
-every Nth reply plain text, to exercise the re-prompt path.
+every Nth reply plain text, to exercise the re-prompt path; `--text-tool-shape
+qwen|glm|gptoss|cycle` writes each call the way that Workers AI model does (as text, not
+`tool_calls`).
+
+## Tool-call recovery (`toolfix.py`)
+
+Only Gemma returns structured `tool_calls` through Workers AI (D-016). With `NEXUS_TOOLFIX=1`
+(the default) `agent.sh` starts `toolfix.py` on a free localhost port and renders pi's
+`baseUrl` to it. Requests go upstream unchanged. pi always streams, so for requests that declare
+tools the proxy buffers the SSE reply; if it has no `tool_calls` but the content or reasoning
+holds a call to a declared tool (`<tool_call>{json}`, `<tool_call>send_keys("…")`,
+`functions.send_keys {…}`, a `send_keys(…)` line, or a bare args object like `{"keys":"j"}`),
+it re-emits the reply with a proper `tool_calls` entry and `finish_reason: tool_calls`.
+Anything else is replayed byte-for-byte. Output: `$NEXUS_OUT/agent/toolfix.jsonl` (one line per
+recovery or miss), `toolfix.stats.json` (counts by shape and model; also `GET /toolfix/stats`).
+The proxy exits when the agent does.
+
+```sh
+python3 lane/test_toolfix.py -v          # exact D-016 shapes, JSON and SSE, plus negatives
+lane/test_toolfix_e2e.sh 15              # pi + game.ts + tmux `cat`, each shape, toolfix on/off
+```
 
 ## Installing pi
 
