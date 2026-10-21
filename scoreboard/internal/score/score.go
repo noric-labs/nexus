@@ -14,14 +14,14 @@ type Weights map[string]float64
 
 // DefaultWeights are the contract defaults.
 func DefaultWeights() Weights {
-	return Weights{"sanitizer": 5, "crash": 3, "hang": 2, "visual": 1, "agent_error": 0}
+	return Weights{"sanitizer": 5, "crash": 3, "hang": 2, "error_exit": 1, "visual": 1, "agent_error": 0}
 }
 
 // DefaultSeasonPoints are awarded by heat finish position (1st..10th).
 func DefaultSeasonPoints() []int { return []int{25, 18, 15, 12, 10, 8, 6, 4, 2, 1} }
 
 // Failure types (scored); everything else (heartbeat, lane_start, lane_end) is not.
-var failureTypes = map[string]bool{"crash": true, "sanitizer": true, "hang": true, "visual": true, "agent_error": true}
+var failureTypes = map[string]bool{"crash": true, "error_exit": true, "sanitizer": true, "hang": true, "visual": true, "agent_error": true}
 
 // IsFailure reports whether an event type is a failure type.
 func IsFailure(t string) bool { return failureTypes[t] }

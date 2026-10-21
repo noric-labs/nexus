@@ -128,13 +128,29 @@ def test_lane_env_parsing():
         LaneEnv.from_env({"NEXUS_GAME": "greed"})
 
 
+def test_faults_file_matches_defaults():
+    from nexus_harness.config import HARNESS_DIR, DEFAULT_FAULTS, load_faults
+    faults = load_faults(HARNESS_DIR / "faults.toml")
+    for name, spec in DEFAULT_FAULTS.items():
+        assert faults[name] == spec, name
+
+
 def test_fault_profiles():
     assert fault_plan("none", 1).prefix == []
     with pytest.raises(ConfigError, match="fiu-run not found"):
         fault_plan("malloc-1pct", 1, which=lambda _: None)
     p = fault_plan("malloc-1pct", 2**40, which=lambda _: "/usr/bin/fiu-run")
-    assert p.prefix == ["fiu-run", "-x", "-c", "enable_random name=libc/mm/*,probability=0.01"]
+    # Default: faults armed via fiu-ctrl after the game starts.
+    assert p.prefix == ["fiu-run", "-x"]
+    assert p.delayed_cmds == ["enable_random name=libc/mm/*,probability=0.01"]
+    assert p.delay_s == 5.0
     assert p.env["FIU_PRNG_SEED"] == str(2**40 % 2147483647)
+    cold = {"cold": {"kind": "libfiu", "points": ["libc/mm/*", "posix/io/rw/*"],
+                     "probability": 0.5, "delay_s": 0}}
+    c = fault_plan("cold", 1, which=lambda _: "/x", faults=cold)
+    assert c.prefix == ["fiu-run", "-x", "-c", "enable_random name=libc/mm/*,probability=0.5",
+                        "-c", "enable_random name=posix/io/rw/*,probability=0.5"]
+    assert c.delayed_cmds == []
     assert fault_plan("winch-storm", 1).winch_storm
     with pytest.raises(ConfigError):
         fault_plan("keystorm", 1)

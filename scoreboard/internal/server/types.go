@@ -50,7 +50,7 @@ type Event struct {
 }
 
 var knownTypes = map[string]bool{
-	"crash": true, "sanitizer": true, "hang": true, "visual": true, "agent_error": true,
+	"crash": true, "error_exit": true, "sanitizer": true, "hang": true, "visual": true, "agent_error": true,
 	"heartbeat": true, "lane_start": true, "lane_end": true,
 }
 

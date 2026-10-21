@@ -29,6 +29,7 @@ class LaneEnv:
     out: Path = Path("/home/out")
     # Extensions (not in CONTRACTS):
     games_file: Path = HARNESS_DIR / "games.toml"
+    faults_file: Path = HARNESS_DIR / "faults.toml"
     tmux_conf: Path = HARNESS_DIR / "tmux.conf"
     tmux_socket: str | None = None
     stubs_dir: Path = HARNESS_DIR / "stubs" / "bin"
@@ -57,7 +58,7 @@ class LaneEnv:
                 scoreboard_url=e.get("NEXUS_SCOREBOARD_URL") or None,
                 out=Path(e.get("NEXUS_OUT") or "/home/out"))
         opt = {
-            "NEXUS_GAMES_FILE": ("games_file", Path), "NEXUS_TMUX_CONF": ("tmux_conf", Path),
+            "NEXUS_GAMES_FILE": ("games_file", Path), "NEXUS_FAULTS_FILE": ("faults_file", Path), "NEXUS_TMUX_CONF": ("tmux_conf", Path),
             "NEXUS_TMUX_SOCKET": ("tmux_socket", str), "NEXUS_STUBS_DIR": ("stubs_dir", Path),
             "NEXUS_HANG_SECS": ("hang_secs", float), "NEXUS_HANG_MIN_KEYS": ("hang_min_keys", int),
             "NEXUS_HEARTBEAT_SECS": ("heartbeat_secs", float),
@@ -120,31 +121,63 @@ def load_games(path: Path) -> dict[str, Game]:
 
 @dataclass
 class FaultPlan:
-    """What a fault profile does to the game: a command prefix, extra env, and whether
-    the launcher runs the winch-storm schedule."""
+    """What a fault profile does to the game: a command prefix, extra env, whether the
+    launcher runs the winch-storm schedule, and libfiu commands to send with fiu-ctrl
+    `delay_s` seconds after the game starts (empty when faults are on from exec)."""
     name: str
     prefix: list[str] = field(default_factory=list)
     env: dict[str, str] = field(default_factory=dict)
     winch_storm: bool = False
+    delayed_cmds: list[str] = field(default_factory=list)
+    delay_s: float = 0.0
 
 
-FAULTS = ("none", "malloc-1pct", "malloc-0.1pct", "winch-storm")
+# Used when faults.toml is missing.
+DEFAULT_FAULTS = {
+    "none": {"kind": "none"},
+    "malloc-1pct": {"kind": "libfiu", "points": "libc/mm/*", "probability": 0.01, "delay_s": 5.0},
+    "malloc-0.1pct": {"kind": "libfiu", "points": "libc/mm/*", "probability": 0.001, "delay_s": 5.0},
+    "winch-storm": {"kind": "winch-storm"},
+}
 
 
-def fault_plan(name: str, seed: int, which=shutil.which) -> FaultPlan:
+def load_faults(path: Path | None) -> dict[str, dict]:
+    if path is None or not Path(path).exists():
+        return dict(DEFAULT_FAULTS)
+    with open(path, "rb") as f:
+        return tomllib.load(f).get("faults", {})
+
+
+def fault_plan(name: str, seed: int, which=shutil.which, faults: dict | None = None) -> FaultPlan:
     """Raises ConfigError when the profile is unknown or its tool is missing."""
-    if name == "none":
+    faults = DEFAULT_FAULTS if faults is None else faults
+    spec = faults.get(name)
+    if spec is None:
+        raise ConfigError(f"fault {name} not defined (have: {', '.join(faults)})")
+    kind = spec.get("kind", "none")
+    if kind == "none":
         return FaultPlan(name)
-    if name in ("malloc-1pct", "malloc-0.1pct"):
-        p = {"malloc-1pct": "0.01", "malloc-0.1pct": "0.001"}[name]
+    if kind == "winch-storm":
+        return FaultPlan(name, winch_storm=True)
+    if kind == "libfiu":
         if not which("fiu-run"):
             raise ConfigError(f"fault {name} skipped: fiu-run not found (install libfiu)")
-        return FaultPlan(name,
-                         prefix=["fiu-run", "-x", "-c", f"enable_random name=libc/mm/*,probability={p}"],
-                         env={"FIU_PRNG_SEED": str(seed % 2147483647)})
-    if name == "winch-storm":
-        return FaultPlan(name, winch_storm=True)
-    raise ConfigError(f"fault {name} not supported by this launcher (have: {', '.join(FAULTS)})")
+        points = spec.get("points", "libc/mm/*")
+        names = [points] if isinstance(points, str) else list(points)
+        prob = float(spec.get("probability", 0.01))
+        cmds = [f"enable_random name={n},probability={prob}" for n in names]
+        delay = float(spec.get("delay_s", 0) or 0)
+        env = {"FIU_PRNG_SEED": str(seed % 2147483647)}
+        if delay <= 0:
+            prefix = ["fiu-run", "-x"]
+            for c in cmds:
+                prefix += ["-c", c]
+            return FaultPlan(name, prefix=prefix, env=env)
+        if not which("fiu-ctrl"):
+            raise ConfigError(f"fault {name} skipped: fiu-ctrl not found (install libfiu)")
+        # Remote control is on by default; fiu-ctrl enables the points later.
+        return FaultPlan(name, prefix=["fiu-run", "-x"], env=env, delayed_cmds=cmds, delay_s=delay)
+    raise ConfigError(f"fault {name}: unknown kind {kind!r}")
 
 
 def winch_schedule(seed: int, base: tuple[int, int], n: int | None = None):

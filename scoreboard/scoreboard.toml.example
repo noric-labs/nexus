@@ -14,5 +14,6 @@ season_points = [25, 18, 15, 12, 10, 8, 6, 4, 2, 1]
 sanitizer = 5
 crash = 3
 hang = 2
+error_exit = 1     # nonzero exit without a signal (the game handled the fault and quit)
 visual = 1
 agent_error = 0

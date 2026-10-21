@@ -75,7 +75,7 @@ One JSON object per line:
 {"v":1,"event_id":"<uuid>","ts":"2026-10-21T12:00:00.123Z","heat_id":"h-0007",
  "lane_id":"l-042","game":"brogue","game_ver":"1.14","fault":"malloc-1pct",
  "seed":12345,"model":"@cf/qwen/qwen3-30b-a3b-fp8",
- "type":"crash|sanitizer|hang|visual|agent_error|heartbeat|lane_start|lane_end",
+ "type":"crash|error_exit|sanitizer|hang|visual|agent_error|heartbeat|lane_start|lane_end",
  "signal":11,"exit_code":null,"stack_hash":"a1b2c3d4e5f6","detail":"heap-use-after-free",
  "turn":812,"tokens_in":4100000,"tokens_out":120000,"replay":"/out/replay/<event_id>.tar.zst"}
 ```
@@ -114,7 +114,9 @@ score(lane, heat) = Σ weight[type] × 0.5^(n−1)
 
 - n is the hit count of `(lane, stack_hash)` in the heat. Hangs and visual corruption with no
   stack hash use `type+detail` as the key.
-- Default weights: `sanitizer=5`, `crash=3`, `hang=2`, `visual=1`, `agent_error=0`.
+- Default weights: `sanitizer=5`, `crash=3`, `hang=2`, `error_exit=1`, `visual=1`, `agent_error=0`.
+- `error_exit` is a nonzero exit without a signal: the game noticed the fault and quit.
+  Exits on SIGINT or SIGQUIT come from agent keystrokes and are reported as `agent_error`.
 - Season points by heat finish position: 25, 18, 15, 12, 10, 8, 6, 4, 2, 1.
 
 ## Scoreboard behaviours (as implemented)
@@ -167,8 +169,11 @@ score(lane, heat) = Σ weight[type] × 0.5^(n−1)
 
 ## Harness MVP scope (M1)
 
-- **Fault profiles:** only `none`, `malloc-1pct`, `malloc-0.1pct` and `winch-storm` are
-  implemented. Any other profile ends the lane with exit 2.
+- **Fault profiles** are defined in `harness/faults.toml` (`NEXUS_FAULTS_FILE` overrides it).
+  The kinds are `none`, `libfiu` and `winch-storm`. A libfiu profile sets `points`,
+  `probability` and `delay_s`. With `delay_s > 0`, the game starts under `fiu-run -x` and the
+  points are enabled through `fiu-ctrl` once the delay has passed. That skips the startup
+  crashes, which all look the same. An unknown profile ends the lane with exit 2.
 - **Crash events** carry no `stack_hash` yet, because there is no core analysis.
 - **Stack hash:** frames use the file basename, and libstdc++, libgcc and the loader are
   dropped along with libc.

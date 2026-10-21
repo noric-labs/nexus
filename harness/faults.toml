@@ -1,0 +1,51 @@
+# Fault profiles for nexus-lane (NEXUS_FAULT picks one; NEXUS_FAULTS_FILE overrides this file).
+#
+# kind = "none" | "libfiu" | "winch-storm"
+#
+# libfiu:
+#   points       libfiu point name or glob, or a list of them (e.g. "libc/mm/*", "posix/io/rw/*")
+#   probability  chance that each call at an enabled point fails
+#   delay_s      seconds after the game starts before the points are enabled via fiu-ctrl.
+#                0 = enabled from exec. Faults during startup mostly kill the game before
+#                it draws anything, which repeats one uninteresting crash.
+#
+# libfiu's malloc points never fire under ASan builds (ASan replaces malloc), so pair
+# libfiu memory profiles with release builds (e.g. game brogue-rel).
+
+[faults.none]
+kind = "none"
+
+[faults.malloc-1pct]
+kind = "libfiu"
+points = "libc/mm/*"
+probability = 0.01
+delay_s = 5.0
+
+[faults."malloc-0.1pct"]
+kind = "libfiu"
+points = "libc/mm/*"
+probability = 0.001
+delay_s = 5.0
+
+# Old behaviour: faults from exec, mostly startup crashes.
+[faults.malloc-1pct-cold]
+kind = "libfiu"
+points = "libc/mm/*"
+probability = 0.01
+delay_s = 0
+
+[faults.io-save-5pct]
+kind = "libfiu"
+points = ["posix/io/rw/*"]
+probability = 0.05
+delay_s = 5.0
+
+[faults.winch-storm]
+kind = "winch-storm"
+
+# Heavy mid-play allocator pressure: games allocate little once running, so 1% rarely fires.
+[faults.malloc-20pct]
+kind = "libfiu"
+points = "libc/mm/*"
+probability = 0.2
+delay_s = 5.0

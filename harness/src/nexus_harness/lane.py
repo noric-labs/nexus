@@ -13,6 +13,7 @@ import logging
 import os
 import shutil
 import signal
+import subprocess
 import sys
 import tarfile
 import threading
@@ -293,6 +294,7 @@ class Lane:
                                      daemon=True)
             storm.start()
         self.heat_changed.clear()
+        arm_at = time.time() + plan.delay_s if plan.delayed_cmds else None
         frame_period = 1.0 / self.env.screen_hz
         next_frame = next_san = 0.0
         last_posted = (None, 0.0)
@@ -306,6 +308,9 @@ class Lane:
                 if self.stop.is_set():
                     self.kill_game(run_dir)
                     return "stop"
+                if arm_at is not None and now >= arm_at:
+                    arm_at = None
+                    self._arm_faults(plan, run_dir, k)
                 if self.heat_changed.is_set() and self.env.recycle_on_heat:
                     log.info("recycling for the new heat")
                     self.kill_game(run_dir)
@@ -347,6 +352,11 @@ class Lane:
             self.failure("agent_error", run_dir, detail=f"game interrupted by {detail}",
                          signal=sig, exit_code=code)
             why = "interrupted"
+        elif crash and not fatal and crash[1] is None:
+            # Nonzero exit without a signal: the game noticed the fault and quit.
+            detail, sig, code = crash
+            self.failure("error_exit", run_dir, detail=detail, exit_code=code)
+            why = "error_exit"
         elif crash and not fatal:
             detail, sig, code = crash
             self.failure("crash", run_dir, detail=detail, signal=sig, exit_code=code)
@@ -357,6 +367,25 @@ class Lane:
         return why
 
     _storm_stop = False
+
+    def _arm_faults(self, plan: cfgmod.FaultPlan, run_dir: Path, k: int) -> None:
+        """Enable the profile's libfiu points in the running game via fiu-ctrl."""
+        pid = self._pid(run_dir)
+        if not pid:
+            return
+        argv = ["fiu-ctrl"]
+        for c in plan.delayed_cmds:
+            argv += ["-c", c]
+        argv.append(str(pid))
+        try:
+            r = subprocess.run(argv, capture_output=True, text=True, timeout=10)
+        except (OSError, subprocess.TimeoutExpired) as e:
+            log.warning("run %d: arming faults failed: %s", k, e)
+            return
+        if r.returncode:
+            log.warning("run %d: fiu-ctrl exited %d: %s", k, r.returncode, r.stderr.strip())
+        else:
+            log.info("run %d: faults armed after %.1fs: %s", k, plan.delay_s, "; ".join(plan.delayed_cmds))
 
     def _winch_storm(self, run_dir: Path, base: tuple[int, int], k: int) -> None:
         for delay, c, r in cfgmod.winch_schedule(self.ident.seed, base):
@@ -394,7 +423,8 @@ class Lane:
             self._agent_off = 0
         self.refresh_heat()
         try:
-            plan = cfgmod.fault_plan(self.env.fault, self.env.seed)
+            plan = cfgmod.fault_plan(self.env.fault, self.env.seed,
+                                     faults=cfgmod.load_faults(self.env.faults_file))
             argv, _ = game.render(self.env.seed, self.env.stubs_dir)
             for exe in (plan.prefix[:1] or []) + argv[:1]:
                 if not (shutil.which(exe) or (os.sep in exe and os.access(exe, os.X_OK))):

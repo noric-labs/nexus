@@ -178,7 +178,7 @@ func (s *Store) ScoredEvents(heatID string) ([]StoredEvent, error) {
 
 // FailureLog returns the latest failures of a lane, newest first.
 func (s *Store) FailureLog(lane string, limit int) ([]FailureView, error) {
-	rows, err := s.db.Query(`SELECT raw,heat_id,cluster,n,points,scored FROM events WHERE lane_id=? AND type IN ('crash','sanitizer','hang','visual','agent_error') ORDER BY rowid DESC LIMIT ?`, lane, limit)
+	rows, err := s.db.Query(`SELECT raw,heat_id,cluster,n,points,scored FROM events WHERE lane_id=? AND type IN ('crash','error_exit','sanitizer','hang','visual','agent_error') ORDER BY rowid DESC LIMIT ?`, lane, limit)
 	if err != nil {
 		return nil, err
 	}

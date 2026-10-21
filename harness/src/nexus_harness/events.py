@@ -16,9 +16,9 @@ from pathlib import Path
 
 log = logging.getLogger("nexus.events")
 
-EVENT_TYPES = {"crash", "sanitizer", "hang", "visual", "agent_error", "heartbeat",
+EVENT_TYPES = {"crash", "error_exit", "sanitizer", "hang", "visual", "agent_error", "heartbeat",
                "lane_start", "lane_end"}
-FAILURE_TYPES = {"crash", "sanitizer", "hang", "visual", "agent_error"}
+FAILURE_TYPES = {"crash", "error_exit", "sanitizer", "hang", "visual", "agent_error"}
 
 
 def utc_ts(t: float | None = None) -> str:
