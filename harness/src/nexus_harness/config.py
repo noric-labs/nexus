@@ -11,6 +11,7 @@ from pathlib import Path
 
 HARNESS_DIR = Path(__file__).resolve().parents[2]
 SEED_SHIM = "/usr/lib/torment/libtorment_seed.so"
+CRASHTRACE_LIB = "/usr/lib/torment/libtorment_crashtrace.so"  # NEXUS_CRASHTRACE_LIB overrides
 U64 = 1 << 64
 
 
@@ -130,6 +131,7 @@ class FaultPlan:
     winch_storm: bool = False
     delayed_cmds: list[str] = field(default_factory=list)
     delay_s: float = 0.0
+    preload: list[str] = field(default_factory=list)
 
 
 # Used when faults.toml is missing.
@@ -167,16 +169,17 @@ def fault_plan(name: str, seed: int, which=shutil.which, faults: dict | None = N
         prob = float(spec.get("probability", 0.01))
         cmds = [f"enable_random name={n},probability={prob}" for n in names]
         delay = float(spec.get("delay_s", 0) or 0)
-        env = {"FIU_PRNG_SEED": str(seed % 2147483647)}
-        if delay <= 0:
-            prefix = ["fiu-run", "-x"]
-            for c in cmds:
-                prefix += ["-c", c]
-            return FaultPlan(name, prefix=prefix, env=env)
-        if not which("fiu-ctrl"):
+        if delay > 0 and not which("fiu-ctrl"):
             raise ConfigError(f"fault {name} skipped: fiu-ctrl not found (install libfiu)")
-        # Remote control is on by default; fiu-ctrl enables the points later.
-        return FaultPlan(name, prefix=["fiu-run", "-x"], env=env, delayed_cmds=cmds, delay_s=delay)
+        # Do what fiu-run does, but set LD_PRELOAD ourselves: fiu-run overwrites it,
+        # which would drop the crashtrace and seed preloads.
+        libdir = Path(which("fiu-run")).resolve().parent.parent / "lib"
+        env = {"FIU_PRNG_SEED": str(seed % 2147483647),
+               "FIU_ENABLE": "\n".join(cmds) if delay <= 0 else "",
+               "FIU_CTRL_FIFO": os.path.join(os.environ.get("TMPDIR", "/tmp"), "fiu-ctrl")}
+        return FaultPlan(name, env=env, preload=[str(libdir / "fiu_run_preload.so"),
+                                                 str(libdir / "fiu_posix_preload.so")],
+                         delayed_cmds=cmds if delay > 0 else [], delay_s=delay)
     raise ConfigError(f"fault {name}: unknown kind {kind!r}")
 
 

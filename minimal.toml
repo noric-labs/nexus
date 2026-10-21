@@ -13,7 +13,7 @@ locked_commit = "4f163b52467e3dc4b2713ded70f9249b6862b3a2"
 [[upstream.sideload]]
 repo = "https://github.com/noric-labs/torment-pkgs"
 branch = "main"
-locked_commit = "77e17ab9a711cd0f0da31b9aef97a98ac31ea88e"
+locked_commit = "3741acb96f99741ea701f360d69bb56febd45f3d"
 
 [defaults]
 state_key = "nexus"
@@ -25,7 +25,7 @@ state_key = "nexus"
 # (hardlinked from the store, so the cost is small).
 [session]
 packages = ["base", "bash", "coreutils", "curl", "python", "node", "tmux", "go",
-            "frotz", "zork-stories", "brogue-ce", "greed", "libfiu", "torment-seed"]
+            "frotz", "zork-stories", "brogue-ce", "greed", "libfiu", "torment-seed", "torment-crashtrace", "llvm"]
 
 # Scoreboard on 0.0.0.0:8080.
 #   min task run scoreboard --heat 3m --pit 15s     (args; `min session run` uses the defaults)
@@ -43,7 +43,7 @@ bash = "bash scripts/scoreboard.sh --heat '%{heat}' --pit '%{pit}'"
 [tasks.lane]
 description = "One Torment Nexus lane: nexus-lane harness + pi agent (NEXUS_* from lane.env or args)"
 packages = ["base", "bash", "coreutils", "curl", "python", "node", "tmux",
-            "frotz", "zork-stories", "brogue-ce", "greed", "libfiu", "torment-seed"]
+            "frotz", "zork-stories", "brogue-ce", "greed", "libfiu", "torment-seed", "torment-crashtrace", "llvm"]
 args.id = { type = "string", help = "lane id, e.g. l-001", default = "" }
 args.game = { type = "string", help = "frotz-zork1 | brogue | brogue-rel | greed | dcss", default = "" }
 args.fault = { type = "string", help = "fault profile", default = "" }
@@ -59,5 +59,5 @@ bash = "bash scripts/lane.sh --id '%{id}' --game '%{game}' --fault '%{fault}' --
 [tasks.slice]
 description = "M1 local slice: scoreboard, mock model and 3 lanes in one box"
 packages = ["base", "bash", "coreutils", "curl", "python", "node", "tmux", "go",
-            "frotz", "zork-stories", "brogue-ce", "greed", "libfiu", "torment-seed"]
+            "frotz", "zork-stories", "brogue-ce", "greed", "libfiu", "torment-seed", "torment-crashtrace", "llvm"]
 bash = "(cd scoreboard && CGO_ENABLED=0 go build -o ../.build/scoreboard .) && { test -x .build/pi/node_modules/.bin/pi || npm install --prefix .build/pi --no-fund --no-audit @earendil-works/pi-coding-agent; } && bash scripts/slice.sh"

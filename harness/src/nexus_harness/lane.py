@@ -21,6 +21,7 @@ import time
 from pathlib import Path
 
 from . import config as cfgmod
+from . import crashtrace
 from .config import ConfigError, LaneEnv
 from .detectors import HangWatchdog, SanitizerReport, SanitizerWatcher, classify_exit
 from .events import EventSender, Identity, fetch_heat, http_json, make_event
@@ -212,9 +213,21 @@ class Lane:
         argv, cwd = game.render(self.ident.seed, self.env.stubs_dir)
         env = {"NEXUS_LANE_ID": self.env.lane_id, "NEXUS_SEED": str(self.ident.seed)}
         env.update(plan.env)
+        # One LD_PRELOAD for everything: crashtrace first, then the fault libraries,
+        # then the seed shim, then whatever the lane inherited.
+        preload = []
+        ct_lib = crashtrace.library()
+        if ct_lib:  # writes crash-<pid>.txt into the run dir on a fatal signal
+            env["TORMENT_CRASHTRACE_DIR"] = str(run_dir)
+            preload.append(ct_lib)
+        preload += plan.preload
         if os.path.exists(cfgmod.SEED_SHIM):
             env["TORMENT_SEED"] = str(self.ident.seed)
-            env["LD_PRELOAD"] = " ".join(filter(None, [cfgmod.SEED_SHIM, os.environ.get("LD_PRELOAD")]))
+            preload.append(cfgmod.SEED_SHIM)
+        if os.environ.get("LD_PRELOAD"):
+            preload.append(os.environ["LD_PRELOAD"])
+        if preload:
+            env["LD_PRELOAD"] = " ".join(preload)
         if game.sanitizer:
             common = "verify_asan_link_order=0:detect_leaks=0:symbolize=1:abort_on_error=0"
             env["ASAN_OPTIONS"] = ":".join(filter(None, [
@@ -359,7 +372,9 @@ class Lane:
             why = "error_exit"
         elif crash and not fatal:
             detail, sig, code = crash
-            self.failure("crash", run_dir, detail=detail, signal=sig, exit_code=code)
+            ct = crashtrace.analyze(run_dir, st) if sig else None
+            self.failure("crash", run_dir, report=ct.report() if ct else "", detail=detail,
+                         signal=sig, exit_code=code, stack_hash=(ct and ct.stack_hash) or None)
             why = "crash"
         elif crash:
             why = "crash"  # already reported as a sanitizer failure
@@ -429,6 +444,9 @@ class Lane:
             for exe in (plan.prefix[:1] or []) + argv[:1]:
                 if not (shutil.which(exe) or (os.sep in exe and os.access(exe, os.X_OK))):
                     raise ConfigError(f"game binary not found: {exe}")
+            for lib in plan.preload:
+                if not os.path.exists(lib):
+                    raise ConfigError(f"fault {plan.name}: preload library not found: {lib}")
             if not shutil.which("tmux"):
                 raise ConfigError("tmux not found")
         except ConfigError as e:

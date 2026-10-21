@@ -99,8 +99,12 @@ Extensions:
     `TORMENT_SEED` set.
 - **Detectors**:
   - Crash: the game died from a signal, or its exit code is not in `ok_exit_codes`. The event's
-    `detail` is `SIGSEGV`, or `exit N` for an exit code. There is no `stack_hash` yet, so the
-    scoreboard clusters these by `crash|detail`.
+    `detail` is `SIGSEGV`, or `exit N` for an exit code. If `/usr/lib/torment/libtorment_crashtrace.so`
+    exists (or `NEXUS_CRASHTRACE_LIB` points at it; `none` turns it off), it is preloaded with
+    `TORMENT_CRASHTRACE_DIR=<run_dir>`. After a signal death `crashtrace.py` reads
+    `crash-<pid>.txt`, symbolizes it (llvm-symbolizer, else addr2line) and sets `stack_hash`; the
+    symbolized stack goes into the replay bundle as `report.txt`. Without a trace the
+    scoreboard clusters crashes by `crash|detail`.
   - Sanitizer: `ASAN_OPTIONS`/`UBSAN_OPTIONS` get `log_path=<run_dir>/{asan,ubsan}` (plus
     `print_stacktrace=1`, `detect_leaks=0` and `verify_asan_link_order=0`). The logs are polled every
     second, and each report is sent once its `SUMMARY` line appears. An ASan abort is reported as

@@ -260,3 +260,33 @@ def test_new_heat_recycles_game_with_next_seed(scoreboard_bin, stubs, tmp_path):
     finally:
         p.terminate()
         p.wait(5)
+
+
+def test_crash_gets_stack_hash_from_crashtrace(board, stubs, tmp_path, crashtrace_lib):
+    import tarfile
+    lane = LaneProc(board, stubs, tmp_path, "l-trace", "stub-crasher",
+                    NEXUS_CRASHTRACE_LIB=crashtrace_lib, STUB_CRASH_SITE="other")
+    try:
+        for n in (1, 2):
+            lane.wait_screen(r"keys: 0 / 3")
+            for _ in range(3):
+                lane.keys("x")
+                time.sleep(0.2)
+            wait_for(lambda: len(failures(board, "l-trace")) >= n, 15, what=f"crash {n}")
+            time.sleep(0.5)
+        cf = failures(board, "l-trace")
+        hashes = {f["stack_hash"] for f in cf}
+        assert len(hashes) == 1 and re.fullmatch(r"[0-9a-f]{12}", next(iter(hashes)))
+        assert all(f["type"] == "crash" and f["detail"] == "SIGSEGV" for f in cf)
+        assert all(f["cluster"] == f"stub-crasher/{f['stack_hash']}" for f in cf)
+        assert lane_state(board, "l-trace")["score"] == pytest.approx(4.5)
+        with tarfile.open(cf[0]["replay"]) as tf:
+            rep = next(m for m in tf.getmembers() if m.name.endswith("/report.txt"))
+            text = tf.extractfile(rep).read().decode()
+        assert "torment-crashtrace: signal 11" in text and "stub_other" in text
+        spec = json.loads((lane.out / "runs" / "0000" / "spec.json").read_text())
+        assert spec["env"]["LD_PRELOAD"].split()[0] == crashtrace_lib
+        assert spec["env"]["TORMENT_CRASHTRACE_DIR"].endswith("runs/0000")
+    finally:
+        rc, out = lane.stop()
+    assert rc == 0, out

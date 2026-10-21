@@ -174,7 +174,11 @@ score(lane, heat) = Σ weight[type] × 0.5^(n−1)
   `probability` and `delay_s`. With `delay_s > 0`, the game starts under `fiu-run -x` and the
   points are enabled through `fiu-ctrl` once the delay has passed. That skips the startup
   crashes, which all look the same. An unknown profile ends the lane with exit 2.
-- **Crash events** carry no `stack_hash` yet, because there is no core analysis.
+- **Crash events** (signal deaths) carry a `stack_hash` when `libtorment_crashtrace.so`
+  (package `torment-crashtrace`) is preloaded: it writes the faulting stack as module+offset
+  and the harness symbolizes it. Frames are `func@file` with DWARF, `func@<binary>` with only
+  a symbol table, and `+0xOFF@<binary>` when stripped (stable only within one build).
+  Programs that install their own fatal-signal handler (ASan builds) get no trace.
 - **Stack hash:** frames use the file basename, and libstdc++, libgcc and the loader are
   dropped along with libc.
 - **Hangs** cannot be detected under `winch-storm`, because the screen keeps changing.

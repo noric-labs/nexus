@@ -140,16 +140,21 @@ def test_fault_profiles():
     with pytest.raises(ConfigError, match="fiu-run not found"):
         fault_plan("malloc-1pct", 1, which=lambda _: None)
     p = fault_plan("malloc-1pct", 2**40, which=lambda _: "/usr/bin/fiu-run")
-    # Default: faults armed via fiu-ctrl after the game starts.
-    assert p.prefix == ["fiu-run", "-x"]
+    # Default: faults armed via fiu-ctrl after the game starts. No fiu-run wrapper: the
+    # harness sets LD_PRELOAD itself so other preloads survive.
+    assert p.prefix == []
+    assert p.preload == ["/usr/lib/fiu_run_preload.so", "/usr/lib/fiu_posix_preload.so"]
+    assert p.env["FIU_ENABLE"] == ""
+    assert p.env["FIU_CTRL_FIFO"].endswith("/fiu-ctrl")
     assert p.delayed_cmds == ["enable_random name=libc/mm/*,probability=0.01"]
     assert p.delay_s == 5.0
     assert p.env["FIU_PRNG_SEED"] == str(2**40 % 2147483647)
     cold = {"cold": {"kind": "libfiu", "points": ["libc/mm/*", "posix/io/rw/*"],
                      "probability": 0.5, "delay_s": 0}}
-    c = fault_plan("cold", 1, which=lambda _: "/x", faults=cold)
-    assert c.prefix == ["fiu-run", "-x", "-c", "enable_random name=libc/mm/*,probability=0.5",
-                        "-c", "enable_random name=posix/io/rw/*,probability=0.5"]
+    c = fault_plan("cold", 1, which=lambda _: "/usr/bin/fiu-run", faults=cold)
+    assert c.prefix == []
+    assert c.env["FIU_ENABLE"] == ("enable_random name=libc/mm/*,probability=0.5\n"
+                                   "enable_random name=posix/io/rw/*,probability=0.5")
     assert c.delayed_cmds == []
     assert fault_plan("winch-storm", 1).winch_storm
     with pytest.raises(ConfigError):
