@@ -95,7 +95,8 @@ scripts/host-up.sh                    # 3 lanes from scripts/lanes.txt, mock mod
 Then show the wall and start the pager:
 
 ```sh
-# in the fullscreen wall terminal
+# in the fullscreen wall terminal (~164 panes, each a pty: raise macOS's default 256 fds)
+ulimit -n 4096
 cd ~/src/nexus/wall && zellij delete-session nexus-wall 2>/dev/null; zellij --config config.kdl -s nexus-wall -n out/wall.kdl
 # in any other terminal
 cd ~/src/nexus/wall && uv run wall-pager --session nexus-wall --scoreboard http://localhost:8080 --out out

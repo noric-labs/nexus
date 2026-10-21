@@ -72,6 +72,7 @@ slot stops the attach client.
 ```sh
 cd wall
 uv run wall-gen --scoreboard http://<scoreboard>:8080 --out out
+ulimit -n 4096                                     # ~164 panes, each a pty; macOS terminals default to 256 fds
 zellij delete-session nexus-wall 2>/dev/null
 zellij --config config.kdl -s nexus-wall -n out/wall.kdl                    # in the fullscreen wall terminal, not inside zellij
 uv run wall-pager --session nexus-wall --scoreboard http://<scoreboard>:8080 --out out   # in any other terminal
