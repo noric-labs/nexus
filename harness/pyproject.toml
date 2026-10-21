@@ -1,0 +1,24 @@
+[project]
+name = "nexus-harness"
+version = "0.1.0"
+description = "Torment Nexus lane launcher: runs a game in tmux under a fault profile and reports failures to the scoreboard"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.scripts]
+nexus-lane = "nexus_harness.cli:main"
+
+[dependency-groups]
+dev = ["pytest>=8"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/nexus_harness"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["integration: needs tmux, a C compiler and the scoreboard binary"]

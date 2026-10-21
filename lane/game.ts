@@ -150,7 +150,8 @@ async function sendKeys(raw: string, segs: Seg[]): Promise<void> {
 	const args: string[] = [];
 	for (const s of segs) {
 		if (args.length) args.push(";");
-		if ("lit" in s) args.push("send-keys", "-t", TARGET, "-l", "--", s.lit);
+		// tmux reads an argument ending in ";" as a command separator; escape it.
+		if ("lit" in s) args.push("send-keys", "-t", TARGET, "-l", "--", s.lit.endsWith(";") ? s.lit.slice(0, -1) + "\\;" : s.lit);
 		else args.push("send-keys", "-t", TARGET, s.key);
 	}
 	if (args.length) await tmux(args);

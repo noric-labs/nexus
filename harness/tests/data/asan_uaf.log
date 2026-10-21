@@ -1,0 +1,23 @@
+=================================================================
+==29654==ERROR: AddressSanitizer: heap-use-after-free on address 0xfc1f923e0011 at pc 0xaaaaad387470 bp 0xfffff3c0b220 sp 0xfffff3c0b218
+READ of size 1 at 0xfc1f923e0011 thread T0
+    #0 0xaaaaad38746c in stub_use_after_free /home/build/nexus/harness/stubs/asan.c:12:12
+    #1 0xaaaaad387500 in main /home/build/nexus/harness/stubs/asan.c:29:31
+    #2 0xffff93122d90 in __libc_start_call_main libc-start.c
+    #3 0xffff93122ed4 in __libc_start_main@GLIBC_2.17 (/usr/lib/libc.so.6+0x22ed4)
+    #4 0xaaaaad2a50ac in _start (/home/build/nexus/harness/stubs/bin/asan+0x350ac)
+
+0xfc1f923e0011 is located 1 bytes inside of 16-byte region [0xfc1f923e0010,0xfc1f923e0020)
+freed by thread T0 here:
+    #0 0xaaaaad347810 in free /build/compiler-rt/lib/asan/asan_malloc_linux.cpp:51:3
+    #1 0xaaaaad387374 in stub_use_after_free /home/build/nexus/harness/stubs/asan.c:11:5
+    #2 0xaaaaad387500 in main /home/build/nexus/harness/stubs/asan.c:29:31
+
+previously allocated by thread T0 here:
+    #0 0xaaaaad347a84 in malloc /build/compiler-rt/lib/asan/asan_malloc_linux.cpp:67:3
+    #1 0xaaaaad387368 in stub_alloc /home/build/nexus/harness/stubs/asan.c:6:59
+
+SUMMARY: AddressSanitizer: heap-use-after-free /home/build/nexus/harness/stubs/asan.c:12:12 in stub_use_after_free
+Shadow bytes around the buggy address:
+=>0xfc1f923e0000: fa fa[fd]fa fa fa fa fa fa fa fa fa fa fa fa fa
+==29654==ABORTING

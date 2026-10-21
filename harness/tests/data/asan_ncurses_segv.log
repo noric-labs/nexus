@@ -1,0 +1,19 @@
+AddressSanitizer:DEADLYSIGNAL
+=================================================================
+==4242==ERROR: AddressSanitizer: SEGV on unknown address 0x000000000000 (pc 0x7f1234 bp 0x7ffd sp 0x7ffc T0)
+==4242==The signal is caused by a READ memory access.
+==4242==Hint: address points to the zero page.
+    #0 0x7f00000003c1 in __strlen_avx2 (/usr/lib/libc.so.6+0x18b3c1) (BuildId: 0123abcd)
+    #1 0x7f0000001234 in waddnstr (/usr/lib/libncursesw.so.6+0x1234) (BuildId: 4567ef01)
+    #2 0x7f0000001250 in wprintw (/usr/lib/libncursesw.so.6+0x1250)
+    #3 0x555500000100 in printString /build/brogue/src/platform/curses-platform.c:88:5
+    #4 0x555500000200 in refreshScreen /build/brogue/src/brogue/IO.c:200:3
+    #5 0x555500000300 in mainInputLoop /build/brogue/src/brogue/IO.c:1200:9
+    #6 0x555500000400 in rogueMain /build/brogue/src/brogue/RogueMain.c:50:2
+    #7 0x555500000500 in std::vector<int, std::allocator<int> >::push_back(int const&) /usr/include/c++/14/bits/stl_vector.h:1283:4
+    #8 0x555500000600 in main /build/brogue/src/platform/main.c:300:5
+    #9 0x7f0000000a00 in __libc_start_main (/usr/lib/libc.so.6+0x27a00)
+
+AddressSanitizer can not provide additional info.
+SUMMARY: AddressSanitizer: SEGV (/usr/lib/libc.so.6+0x18b3c1) in __strlen_avx2
+==4242==ABORTING

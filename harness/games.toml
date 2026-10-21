@@ -1,0 +1,48 @@
+# Game table for nexus-lane. Command templates:
+#   {seed}    full u64 seed       {seed32}  seed % 2147483646 + 1 (frotz -s)
+#   {stubs}   compiled stand-ins  {home}    $HOME
+# size = [cols, rows] of the tmux window. cwd is created if missing.
+# sanitizer = true sets ASAN_OPTIONS/UBSAN_OPTIONS with log_path and parses the logs.
+# baseline_hashes: sanitizer stack hashes reported locally but not sent (score 0).
+
+[games.frotz-zork1]
+command = ["dfrotz", "-m", "-w", "80", "-h", "24", "-s", "{seed32}", "/usr/share/zork/zork1.z3"]
+version = "2.54"
+size = [80, 24]
+
+[games.brogue]
+command = ["brogue-ce-asan", "--term", "--seed", "{seed}"]
+version = "1.14"
+size = [100, 34]
+cwd = "{home}/brogue"
+sanitizer = true
+
+[games.greed]
+command = ["greed"]
+version = "4.3"
+size = [80, 24]
+
+[games.dcss]
+command = ["crawl-asan", "-seed", "{seed}"]
+version = "0.32"
+size = [80, 24]
+sanitizer = true
+baseline_hashes = []
+
+# Local stand-ins (build with `nexus-lane build-stubs`).
+[games.stub-crasher]
+command = ["{stubs}/crasher"]
+version = "stub"
+size = [80, 24]
+
+[games.stub-asan]
+command = ["{stubs}/asan"]
+version = "stub"
+size = [80, 24]
+sanitizer = true
+
+[games.stub-hang]
+command = ["{stubs}/hang"]
+version = "stub"
+size = [80, 24]
+
