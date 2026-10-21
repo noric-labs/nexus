@@ -70,7 +70,8 @@ cd ~/src/nexus
 scripts/host-up.sh --dry-run          # print every command, run nothing
 scripts/host-up.sh                    # 3 lanes from scripts/lanes.txt, mock model
 #   -n 8 --lanes my-lanes.txt         more lanes;  --heat 3m --pit 15s   short heats
-#   --live                            pi -> broker -> Workers AI (spends credit)
+#   --live                            pi -> broker -> Workers AI (spends credit); lanes run host_ip
+#   --lane-network own_ip|host_ip     lanes' mode when it differs from the scoreboard's (D-035)
 ```
 
 `host-up.sh` does the following, and stops with a message at the first check that fails:
@@ -124,8 +125,9 @@ These follow the [min CLI reference](https://minimal.dev/docs/reference/cli-min)
   is activated from the checkout, so the repo is at `/workbench` and `[session].packages` from
   `minimal.toml` (the sideloaded games included) is on PATH.
 - **Networking.** `--network own_ip` gives each box its own address. A box with no egress flags
-  reaches nothing. Lanes get `--allow-dns-hosts <scoreboard>.min.internal`, plus
-  `--allow-subnets 100.64.255.254/32` (the broker) with `--live`. The scoreboard gets
+  reaches nothing. Mock lanes get `--allow-dns-hosts <scoreboard>.min.internal`. Live lanes run `host_ip`,
+  because only a `host_ip` box reaches the broker at `100.64.255.254:8899`; a `host_ip` box
+  still reaches the `own_ip` scoreboard by name (D-035). The scoreboard gets
   `--ingress 8080:8080` and egress only to the Go module proxy. Lanes find it by box name:
   `host-up.sh` reads `names: <box>.min.internal` from the activate output.
 - **Long-running processes.** `min session exec <s> '<cmd>'` with one argument runs a shell

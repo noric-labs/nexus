@@ -4,18 +4,23 @@
 # localhost, and generate the zellij wall. scripts/host-down.sh undoes it.
 #
 #   scripts/host-up.sh [--dry-run] [-n N] [--lanes FILE] [--live] [--heat 15m] [--pit 1m]
-#                      [--port 8080] [--network own_ip|host_ip] [--via exec|run]
-#                      [--egress open|strict]
+#                      [--port 8080] [--network own_ip|host_ip] [--lane-network own_ip|host_ip]
+#                      [--via exec|run] [--egress open|strict]
 #
 #   --dry-run   print every command (min, uv, ...) and run none of them
 #   -n N        start the first N lanes of the lanes file (default 3)
 #   --lanes F   lanes file, "id game fault seed [model]" per line (default scripts/lanes.txt)
-#   --live      pi talks to Workers AI through the `broker` loadout. Without it every lane runs
-#               lane/mock_openai.py in its own box: no inference egress, no spend.
+#   --live      pi talks to Workers AI through the host broker (100.64.255.254:8899). Without it
+#               every lane runs lane/mock_openai.py in its own box: no inference egress, no spend.
+#               Only host_ip boxes reach the broker, so --live implies --lane-network host_ip.
 #   --port P    laptop port for the scoreboard forward (default 8080)
 #   --network   own_ip (default): every box has its own address, lanes may reach only the
 #               scoreboard (+ the broker with --live). host_ip: boxes share the host network,
 #               no isolation, egress flags are not passed (a host_ip box does not enforce them).
+#   --lane-network  the lanes' mode, when it differs from the scoreboard's (default: --network,
+#               or host_ip with --live). own_ip scoreboard + host_ip lanes works: a host_ip box
+#               reaches scoreboard.min.internal:8080 and the broker; an own_ip box reaches
+#               neither the broker nor a host_ip box (D-035).
 #   --egress    open (default for now): own_ip boxes get --allow-subnets 0.0.0.0/0, i.e. all
 #               internet egress (go modules, npm, ...). strict: only the named hosts below.
 #               Neither reaches the host alias 100.64.255.254 from own_ip (gominimal/inbox#1153).
@@ -46,11 +51,10 @@ set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 STATE=$ROOT/.build/host
 DRY=0 N=3 LANES_FILE=$ROOT/scripts/lanes.txt LIVE=0 HEAT=15m PIT=1m PORT=8080
-NET=own_ip VIA=exec EGRESS=open
+NET=own_ip LANE_NET= VIA=exec EGRESS=open
 SB=${NEXUS_SB_SESSION:-scoreboard}
 PREFIX=${NEXUS_LANE_PREFIX:-}
 MODEL=${NEXUS_MODEL:-@cf/qwen/qwen3-30b-a3b-fp8}
-BROKER_SUBNET=100.64.255.254/32
 # Hosts the scoreboard box may reach for `go build` (module proxy + checksum DB). Add more
 # with NEXUS_SB_ALLOW_HOSTS="a b" if the build log shows another host.
 SB_HOSTS="proxy.golang.org sum.golang.org ${NEXUS_SB_ALLOW_HOSTS:-}"
@@ -65,6 +69,7 @@ while [ $# -gt 0 ]; do
         --pit) PIT=$2; shift ;;
         --port) PORT=$2; shift ;;
         --network) NET=$2; shift ;;
+        --lane-network) LANE_NET=$2; shift ;;
         --via) VIA=$2; shift ;;
         --egress) EGRESS=$2; shift ;;
         -h|--help) sed -n '2,/^set -euo/p' "$0" | sed '$d; s/^# \{0,1\}//'; exit 0 ;;
@@ -111,6 +116,11 @@ wait_for() {  # wait_for <seconds> <description> <command...>
 }
 
 case $NET in own_ip|host_ip) ;; *) die "--network must be own_ip or host_ip" ;; esac
+[ -n "$LANE_NET" ] || { [ "$LIVE" = 1 ] && LANE_NET=host_ip || LANE_NET=$NET; }
+case $LANE_NET in own_ip|host_ip) ;; *) die "--lane-network must be own_ip or host_ip" ;; esac
+[ "$LIVE" = 1 ] && [ "$LANE_NET" = own_ip ] && die "--live needs --lane-network host_ip: an own_ip
+box cannot reach the host broker at 100.64.255.254 (gominimal/inbox#1153, D-035)"
+[ "$NET" = host_ip ] && [ "$LANE_NET" = own_ip ] && die "own_ip lanes cannot reach a host_ip scoreboard"
 case $VIA in exec|run) ;; *) die "--via must be exec or run" ;; esac
 case $EGRESS in open|strict) ;; *) die "--egress must be open or strict" ;; esac
 [[ $N =~ ^[0-9]+$ ]] && [ "$N" -ge 1 ] || die "-n needs a positive number"
@@ -179,7 +189,8 @@ if ! grep -q '"pi-next"' "$ROOT/minimal.toml" && [ ! -s "$ROOT/lane/loadout/vend
     say "pi-next not in minimal.toml [session].packages and no vendor/pi.tgz: lanes will npm-install pi"
 fi
 if [ "$LIVE" = 1 ] && [ "$DRY" = 0 ]; then
-    min loadout list | grep -qw broker || die "--live needs the 'broker' loadout (min loadout list)"
+    # Not `min loadout list | grep -q`: grep exits early, min panics on EPIPE, pipefail fails.
+    grep -qw broker <<< "$(min loadout list 2>/dev/null)" || die "--live needs the 'broker' loadout (min loadout list)"
 fi
 
 # ---- scoreboard session -----------------------------------------------------------------
@@ -242,9 +253,9 @@ fi
 say "race UI: http://localhost:$PORT"
 
 # ---- lane sessions ----------------------------------------------------------------------
-lane_flags=(--no-prompt --network "$NET" --loadout nexus-lane)
+lane_flags=(--no-prompt --network "$LANE_NET" --loadout nexus-lane)
 [ "$LIVE" = 1 ] && lane_flags+=(--loadout broker)
-if [ "$NET" = own_ip ]; then
+if [ "$LANE_NET" = own_ip ]; then
     if [ "$EGRESS" = open ]; then
         # All internet plus the in-VM plane (scoreboard.min.internal is in 100.64.0.0/16).
         lane_flags+=(--allow-subnets 0.0.0.0/0)
@@ -252,7 +263,6 @@ if [ "$NET" = own_ip ]; then
         lane_flags+=(--allow-dns-hosts "$SB_HOST")
         [ "$NPM" = 1 ] && lane_flags+=(--allow-dns-hosts registry.npmjs.org)
     fi
-    [ "$LIVE" = 1 ] && lane_flags+=(--allow-subnets "$BROKER_SUBNET")
 fi
 MOCK=$((1 - LIVE))
 first=1
@@ -313,7 +323,7 @@ run uv run --project "$ROOT/wall" wall-gen --lanes-file "$STATE/lanes.json" --ou
 
 cat <<EOF
 
-Up: scoreboard session '$SB' + ${#LANES[@]} lane session(s) ($NET, via $VIA, $([ "$LIVE" = 1 ] && echo "live via broker" || echo "mock model")).
+Up: scoreboard session '$SB' + ${#LANES[@]} lane session(s) (scoreboard $NET, lanes $LANE_NET, via $VIA, $([ "$LIVE" = 1 ] && echo "live via broker" || echo "mock model")).
   race UI      http://localhost:$PORT   (forward pid in $STATE/forward.pid)
   one lane     ${VIEW_CMD//\{session\}/${SESSIONS[1]}}
   lane logs    min session exec ${SESSIONS[1]} 'tail -n 40 \$HOME/.nexus/lane.log \$HOME/out/harness.log \$HOME/out/agent/agent.log'

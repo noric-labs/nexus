@@ -6,6 +6,45 @@ Commits are in the git history; the research is in the
 
 ## 2026-10-21
 
+### D-035 Live lanes run `host_ip`; the D-030 gateway is dropped
+**Measured on min 0.7.1** (VM `default`, test box `gw-test`):
+
+| From | To | Result |
+| --- | --- | --- |
+| own_ip lane, `--allow-subnets 0.0.0.0/0` | broker `100.64.255.254:8899` | timeout |
+| own_ip lane | a host_ip box (`100.64.255.253`, `gw-test.min.internal`) | timeout |
+| host_ip box | broker | answered (Cloudflare 405 on GET) |
+| host_ip box | own_ip scoreboard `scoreboard.min.internal:8080` | 200 |
+
+So the D-030 relay cannot work: own_ip lanes can't reach a host_ip gateway. A host_ip
+lane needs no gateway at all.
+**Decision (user sign-off 2026-10-21):** the scoreboard stays own_ip with `--ingress 8080`
+and the `localhost:8080` forward. With `--live`, lanes run host_ip with
+`--loadout nexus-lane --loadout broker` (`host-up.sh --lane-network`, defaulting to host_ip
+under `--live`). Cost: live lanes have no per-box egress isolation and share the VM's
+network namespace; lane ports are already random, so they don't collide.
+**Long term:** Minimal's Box Egress Proxy (`--credentialed-upstream`, minimal spec 24) is the
+isolated path once 0.7.x can configure it.
+
+**First live race in real sessions** (heat h-0002, about 20 min, about 770k input tokens):
+
+| Lane | Model | Result |
+| --- | --- | --- |
+| l-001 Zork, winch-storm | qwen3 | 184 turns, Living Room, game score 10 after 73 moves, no failures; 49/49 tool calls structured |
+| l-002 Brogue-rel, malloc-20pct | GLM | SIGSEGV crash cluster, score 4.5; 337 of 346 tool calls structured, 1 upstream error |
+| l-003 Bastet, winch-storm | qwen3 | started late; visual blank-screen |
+
+**Also found:**
+- **Loadout hooks run on min 0.7.1.** The `nexus-lane` on_activate hook npm-installed pi on
+  every activation and timed out at 240 s on l-003. It now uses `pi` from `pi-next` when on
+  PATH, and activation takes about 2 s. The drafted inbox item about inert hooks is stale.
+- **`min loadout list | grep -q` panics `min`** (EPIPE) and failed `host-up.sh` under
+  pipefail. Fixed by capturing the output first.
+- **Wall verified headless:** zellij run in a detached host tmux (240x70). Pages show live
+  games through `ttyview`, and `wall-pager` fills the Hot tab. A stale zellij server state
+  once made `-n` fall back to the default layout; `zellij kill-all-sessions` +
+  `delete-all-sessions` cleared it.
+
 ### D-034 First real-session run on the Mac works end to end (2026-10-21)
 `scripts/host-up.sh` on the user's MacBook brought up the scoreboard plus 3 lane
 sessions in VM `default`.

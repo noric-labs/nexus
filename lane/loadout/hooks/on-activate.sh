@@ -13,7 +13,11 @@ PI=$PREFIX/node_modules/.bin/pi
 mkdir -p "$PREFIX" "${NEXUS_OUT:-$HOME/out}/agent" "${PI_CODING_AGENT_DIR:-$HOME/.pi/nexus-agent}" \
     || say "could not create output dirs"
 
-if [ -x "$PI" ]; then
+# The pi-next session package puts pi on PATH (D-032); lane.sh prefers it, so skip npm.
+if command -v pi >/dev/null 2>&1; then
+    PI=$(command -v pi)
+    say "pi from the session packages: $PI"
+elif [ -x "$PI" ]; then
     say "pi already installed: $("$PI" --version 2>/dev/null)"
 elif [ -s "$TGZ" ]; then
     tar -xzf "$TGZ" -C "$PREFIX" && say "pi installed from vendored tarball"

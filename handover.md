@@ -1,4 +1,4 @@
-# Handover: Torment Nexus (updated 2026-10-21)
+# Handover: Torment Nexus (updated 2026-10-21, after D-035)
 
 **Where things stand:** the Nexus runs as real Minimal sessions on the Mac. `scripts/host-up.sh`
 brings up the scoreboard and 3 lane sessions in VM `default`.
@@ -6,19 +6,20 @@ brings up the scoreboard and 3 lane sessions in VM `default`.
 - Failures score: Brogue under `malloc-20pct` produced 4 crash clusters within a minute
   (D-034).
 - The race UI is forwarded to `localhost:8080`.
-- The zellij wall generates and its pager connects, but whether the panes show the games
-  through `ttyview` is not yet confirmed.
+- The zellij wall shows live games through `ttyview`, and the pager fills the Hot tab
+  (verified headless in a host tmux, D-035).
+- **Live inference works in real sessions (D-035):** `host-up.sh --live` runs the lanes
+  `host_ip` with the broker loadout. qwen3 and GLM played Zork and Brogue for 20 minutes.
+  The D-030 gateway is dropped: own_ip boxes can't reach host_ip boxes.
 
 Separately, the multi-lane slice runs in one box with live Workers AI and is finding real
 bugs.
 
 **Next milestones:**
-1. Confirm the wall panes and the race UI in a real browser.
-2. Live inference in real sessions. This needs the D-030 gateway, because `own_ip` boxes
-   can't reach the host broker.
-3. Several VMs (`host-up.sh --vms K`).
+1. The race UI in a real browser (WebAudio, SSE reconnect), and the wall on the real display.
+2. Several VMs (`host-up.sh --vms K`).
 
-The authoritative history is [docs/DECISIONS.md](docs/DECISIONS.md) (D-001..D-034). The
+The authoritative history is [docs/DECISIONS.md](docs/DECISIONS.md) (D-001..D-035). The
 interfaces are in [docs/CONTRACTS.md](docs/CONTRACTS.md), and the plan and milestone status
 in [docs/PLAN.md](docs/PLAN.md). The research doc is at
 https://claude.ai/code/artifact/b10bce23-195d-4e31-8c3d-0b65f2d6ed4a.
@@ -64,7 +65,7 @@ https://claude.ai/code/artifact/b10bce23-195d-4e31-8c3d-0b65f2d6ed4a.
 ```sh
 # lanes
 min session destroy scoreboard 2>/dev/null; for s in l-001 l-002 l-003; do min session destroy $s 2>/dev/null; done
-git pull && scripts/host-up.sh             # --dry-run, -n N, --egress open|strict, --live (needs D-030)
+git pull && scripts/host-up.sh             # --dry-run, -n N, --egress open|strict, --live (host_ip lanes, D-035)
 curl -s localhost:8080/api/state | head -c 400; open http://localhost:8080
 
 # wall: a fullscreen terminal that is NOT inside zellij
@@ -89,19 +90,18 @@ scripts/host-down.sh                       # tear down
 
 ## Open items, in order
 
-1. **Wall panes.** Confirm they show live games through `min session exec … ttyview.py`.
-   The pager is confirmed: it filled the Hot tab with l-003 and l-002 and pages every 20 s.
-2. **Race UI** on the second display, in a real browser: WebAudio and SSE reconnect.
-3. **Live inference in real sessions.** D-030 is proposed and needs sign-off:
-   - a `host_ip` gateway box per VM, relaying `/workers-ai/*` to the broker and
-     `/events`, `/lanes/*` to the scoreboard;
-   - `own_ip` lanes with egress only to their gateway.
-
-   `own_ip` boxes cannot reach the host alias whatever the egress rules (gominimal/inbox#1153).
-4. **Multiple VMs:** `host-up.sh --vms K`.
+1. **Race UI** on the second display, in a real browser: WebAudio and SSE reconnect. Not
+   done: the Chrome extension was not connected.
+2. **Wall on the real display.** Panes and pager are verified headless; check pane sizing
+   on the 16" fullscreen terminal.
+3. **Multiple VMs:** `host-up.sh --vms K`.
    - Use `minvmd --vm NAME` and `min --vm NAME …`, and pass `--vm` to `exec`.
    - Box names must be unique machine-wide.
-   - There is no cross-VM traffic, so the gateway relays to the scoreboard through the host.
+   - There is no cross-VM traffic, so lanes in other VMs can't reach the scoreboard box.
+     Needs a design: a scoreboard per VM, or relaying through the host.
+4. **Live-lane isolation.** Live lanes are host_ip, with no egress enforcement (D-035).
+   Move them to own_ip once Minimal's Box Egress Proxy (`--credentialed-upstream`) can
+   front the Workers AI route.
 5. **Least-privilege egress.** `--egress open` is the default for now (D-033). Return to
    strict once egress presets (#1154) or an audit mode (#1155) exist, or once the
    scoreboard is a packaged binary that needs no Go build.
@@ -162,7 +162,8 @@ scripts/host-down.sh                       # tear down
    - Workaround: `scripts/detach.py` closes fds 3 and up.
 3. **No `ps`/`pgrep` in session boxes.** `base` has no procps. Document it, or add
    `procps-ng` to the default session tools.
-4. **Docs inconsistency on lifecycle hooks.**
+4. **Docs inconsistency on lifecycle hooks.** *Stale as of min 0.7.1: hooks run
+   (D-035). Re-check the docs before filing.*
    - `concepts/sessions` says hooks are inert in the current release: project
      `[session]` hooks are composed but never executed, and loadout hooks are excluded.
    - `reference/loadouts` describes `on_activate`, `on_destroy`, `on_attach` and

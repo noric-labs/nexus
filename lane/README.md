@@ -145,7 +145,7 @@ min session exec l-001 'cd /workbench && setsid nohup bash scripts/lane.sh >$HOM
 - `scripts/lane.sh` is the `lane` task's entry point too. It starts the harness, waits for tmux
   session `game`, then runs `lane/agent.sh`. It ends when the harness ends, and SIGTERM stops
   both, so `lane_end` is sent. `NEXUS_MOCK=1` runs `mock_openai.py` in the box instead of using the
-  broker; `--live` on `host-up.sh` adds `--loadout broker --allow-subnets 100.64.255.254/32`.
+  broker; `--live` on `host-up.sh` adds `--loadout broker` and runs the lanes `host_ip` (D-035).
 - **Why `setsid nohup … &`:** `min session exec` returns when its command exits, and it ends the
   command's whole process group if the client goes away first. `setsid` moves the lane into its
   own group, so it outlives the exec ([cli-min, "Backgrounding a
