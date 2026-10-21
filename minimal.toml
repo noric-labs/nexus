@@ -24,8 +24,9 @@ state_key = "nexus"
 # the scoreboard session; a project has one [session] block, so lanes carry it too
 # (hardlinked from the store, so the cost is small).
 [session]
-packages = ["base", "bash", "coreutils", "curl", "python", "node", "tmux", "go",
-            "frotz", "zork-stories", "brogue-ce", "greed", "libfiu", "torment-seed", "torment-crashtrace", "llvm"]
+packages = ["base", "bash", "coreutils", "curl", "python", "node", "tmux", "go", "strace", "util-linux",
+            "frotz", "zork-stories", "brogue-ce", "greed", "bastet", "nsnake", "pacman4console", "dcss",
+            "libfiu", "libfaketime", "torment-seed", "torment-crashtrace", "llvm"]
 
 # Scoreboard on 0.0.0.0:8080.
 #   min task run scoreboard --heat 3m --pit 15s     (args; `min session run` uses the defaults)
@@ -61,3 +62,32 @@ description = "M1 local slice: scoreboard, mock model and 3 lanes in one box"
 packages = ["base", "bash", "coreutils", "curl", "python", "node", "tmux", "go",
             "frotz", "zork-stories", "brogue-ce", "greed", "libfiu", "torment-seed", "torment-crashtrace", "llvm"]
 bash = "(cd scoreboard && CGO_ENABLED=0 go build -o ../.build/scoreboard .) && { test -x .build/pi/node_modules/.bin/pi || npm install --prefix .build/pi --no-fund --no-audit @earendil-works/pi-coding-agent; } && bash scripts/slice.sh"
+
+# Scenario slices used during development (D-022..D-029). Same runner as `slice`; they
+# assume .build/scoreboard and .build/pi exist (run `min task run slice` once first).
+# Tasks marked LIVE send real Workers AI traffic through the broker (about $0.25 each).
+
+[tasks.slice-faults]
+description = "Allocator faults on release builds (mock model)"
+packages = ["base", "bash", "coreutils", "curl", "python", "node", "tmux", "frotz", "zork-stories", "brogue-ce", "greed", "libfiu", "torment-seed", "torment-crashtrace", "llvm"]
+exec = "env SLICE_SECONDS=150 SLICE_LANES='l-101 brogue-rel malloc-20pct 11;l-102 greed malloc-20pct 12;l-103 frotz-zork1 malloc-20pct 13' bash scripts/slice.sh"
+
+[tasks.slice-new]
+description = "New games and fault kinds (mock model)"
+packages = ["base", "bash", "coreutils", "curl", "python", "node", "tmux", "strace", "util-linux", "frotz", "zork-stories", "brogue-ce", "greed", "bastet", "nsnake", "pacman4console", "libfiu", "libfaketime", "torment-seed", "torment-crashtrace", "llvm"]
+exec = "env SLICE_SECONDS=180 SLICE_HEAT=600s SLICE_LANES='l-301 bastet winch-storm 31;l-302 nsnake-rel strace-eintr-read 32;l-303 pacman-rel malloc-20pct 33;l-304 brogue keystorm 34;l-305 greed rlimit-tight 35;l-306 frotz-zork1 time-warp 36' bash scripts/slice.sh"
+
+[tasks.slice-dcss]
+description = "DCSS fault-free lanes, for baseline hashes (mock model)"
+packages = ["base", "bash", "coreutils", "curl", "python", "node", "tmux", "dcss", "torment-seed", "torment-crashtrace", "llvm"]
+exec = "env SLICE_SECONDS=120 SLICE_HEAT=600s SLICE_LANES='l-401 dcss none 41;l-402 dcss none 42;l-403 dcss none 43' bash scripts/slice.sh"
+
+[tasks.slice-toolfix]
+description = "LIVE: qwen3, glm, gpt-oss through the toolfix proxy"
+packages = ["base", "bash", "coreutils", "curl", "python", "node", "tmux", "frotz", "zork-stories", "brogue-ce", "greed", "torment-seed", "torment-crashtrace", "llvm"]
+exec = "env SLICE_LIVE=1 SLICE_SECONDS=240 SLICE_HEAT=600s SLICE_LANES='l-501 frotz-zork1 none 51 @cf/qwen/qwen3-30b-a3b-fp8;l-502 greed none 52 @cf/zai-org/glm-4.7-flash;l-503 brogue-rel none 53 @cf/openai/gpt-oss-20b' bash scripts/slice.sh"
+
+[tasks.slice-mixed]
+description = "LIVE: 6 lanes, all four models, mixed faults"
+packages = ["base", "bash", "coreutils", "curl", "python", "node", "tmux", "strace", "util-linux", "frotz", "zork-stories", "brogue-ce", "greed", "bastet", "nsnake", "libfiu", "torment-seed", "torment-crashtrace", "llvm"]
+exec = "env SLICE_LIVE=1 SLICE_SECONDS=300 SLICE_HEAT=600s SLICE_LANES='l-701 brogue-rel malloc-20pct 71 @cf/google/gemma-4-26b-a4b-it;l-702 brogue-rel malloc-20pct 72 @cf/qwen/qwen3-30b-a3b-fp8;l-703 bastet winch-storm 73 @cf/zai-org/glm-4.7-flash;l-704 frotz-zork1 strace-eintr-read 74 @cf/openai/gpt-oss-20b;l-705 greed rlimit-tight 75 @cf/qwen/qwen3-30b-a3b-fp8;l-706 nsnake-rel winch-storm 76 @cf/google/gemma-4-26b-a4b-it' bash scripts/slice.sh"
