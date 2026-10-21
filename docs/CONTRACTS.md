@@ -46,8 +46,9 @@ The launcher reads these environment variables:
 - Brogue writes saves, recordings and scores to its working directory, so it runs from
   `$HOME/brogue`.
 - Curses frotz waits for one more key after `quit`.
-- tmux is started with `-f lane/tmux.conf`, which contains `set -g window-size manual` and
-  `set -g default-size 80x24`, so viewers attaching never resize the game.
+- tmux is started with `-f harness/tmux.conf`. It sets `window-size manual` and a per-game
+  `default-size`, so viewers attaching never resize the game. It also turns off the status line
+  (so the game keeps all 24 rows) and sets `remain-on-exit` (so restarts keep the session).
 - The pi agent drives the game through `tmux send-keys` and `tmux capture-pane`.
 
 ## Fault profiles
@@ -163,3 +164,12 @@ score(lane, heat) = Σ weight[type] × 0.5^(n−1)
   forwards them as `agent_error`.
 - **Model endpoint:** pi uses `lane/models.json` (provider `nexus`), base URL
   `http://100.64.255.254:8899/workers-ai/v1` (the broker). Tests use `lane/mock_openai.py`.
+
+## Harness MVP scope (M1)
+
+- **Fault profiles:** only `none`, `malloc-1pct`, `malloc-0.1pct` and `winch-storm` are
+  implemented. Any other profile ends the lane with exit 2.
+- **Crash events** carry no `stack_hash` yet, because there is no core analysis.
+- **Stack hash:** frames use the file basename, and libstdc++, libgcc and the loader are
+  dropped along with libc.
+- **Hangs** cannot be detected under `winch-storm`, because the screen keeps changing.
