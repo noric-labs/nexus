@@ -38,11 +38,26 @@ version = "4.5"
 size = [80, 24]
 
 [games.dcss]
-command = ["crawl-asan", "-seed", "{seed}", "-name", "nexus", "-species", "Minotaur", "-background", "Fighter", "-extra-opt-first", "weapon=trident"]
+command = ["crawl-asan", "-seed", "{seed}", "-name", "n{seed32}", "-species", "Minotaur", "-background", "Fighter", "-extra-opt-first", "weapon=trident"]
 version = "0.34.1"
 size = [80, 24]
 sanitizer = true
-baseline_hashes = []
+# Ambient UBSan reports with fault=none (3 lanes x 2 min, D-025); scored 0.
+baseline_hashes = [
+    "a592ced1f6a4",
+    "53b358f7bbbe",
+    "c263a34a1b74",
+    "2b829db422da",
+    "72fb46822cfd",
+    "b54de4421bb5",
+    "bf7713bece7e",
+    "74e390959efd",
+    "f10911b6ef2d",
+    "05717aa9ace7",
+    "dc7ffa91e7f4",
+    "92a6740b38b3",
+    "be59bc042643",
+]
 status_regex = "Health:"
 
 # Local stand-ins (build with `nexus-lane build-stubs`).

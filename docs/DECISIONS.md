@@ -6,6 +6,16 @@ Commits are in the git history; the research is in the
 
 ## 2026-10-21
 
+### D-025 DCSS ambient UBSan reports are baselined
+`crawl-asan` emitted 13 distinct UBSan stack hashes in 2 min across 3 fault-free lanes,
+about 50–66 points per lane.
+**Decision:** every hash seen with `fault=none` counts as ambient noise and goes in
+`baseline_hashes` (scored 0). Otherwise DCSS lanes would win every race without any fault
+injection. New reports reached through play still score: the first rerun found a left
+shift of a negative value in `chardump.cc:1358`, reached from melee combat.
+**Also:** the DCSS character name is now per seed (`n{seed32}`). Lanes sharing one
+`$HOME/.crawl` in a box had hit "game already being played" and exited 1.
+
 ### D-024 Race UI: canvas pixel art, no build step, no external assets
 - **Format:** plain ES modules embedded in the Go binary, drawn on one 960x540 canvas
   scaled 2x for 1920x1080.
