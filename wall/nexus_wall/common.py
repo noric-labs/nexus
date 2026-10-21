@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 import re
 import shlex
 import urllib.request
@@ -16,6 +17,19 @@ DEFAULT_SIZE = (80, 24)
 # (cols, rows) of panes per page. At 5x10 px cells the 16" screen is ~691x216 cells; a
 # framed pane is size + 2, so 29x32 Pacman fits 22x6 (one spare column of panes kept).
 GRIDS = {(80, 24): (8, 8), (100, 34): (6, 6), (29, 32): (20, 6)}
+
+
+def fit_grid(n: int, grid: tuple[int, int]) -> tuple[int, int]:
+    """The smallest near-square (cols, rows) holding n panes, capped at `grid` (cols >= rows)."""
+    cols, rows = grid
+    if n >= cols * rows:
+        return cols, rows
+    c = min(cols, max(1, math.isqrt(n - 1) + 1))
+    r = -(-n // c)
+    if r > rows:
+        r = rows
+        c = -(-n // rows)
+    return c, r
 
 # Default pane command. `min session exec` runs on the Mac host; `{session}` is the
 # Minimal session name of the lane. Override with --cmd (see README).

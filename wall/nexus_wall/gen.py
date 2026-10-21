@@ -37,6 +37,8 @@ def paginate(lanes: list[c.Lane]) -> list[dict]:
         cols, rows = c.GRIDS.get(size, c.GRIDS[c.DEFAULT_SIZE])
         per = cols * rows
         chunks = [group[i : i + per] for i in range(0, len(group), per)]
+        if len(chunks) == 1:  # one page: shrink the grid to fit, so a few lanes get big panes
+            cols, rows = c.fit_grid(len(group), (cols, rows))
         for i, chunk in enumerate(chunks, 1):
             pages.append({
                 "tab": f"{size[0]}x{size[1]} {i}/{len(chunks)}",
@@ -61,15 +63,19 @@ def main(argv=None):
                    help=f"how {{session}} is built from the lane (default: {c.DEFAULT_SESSION_FMT!r})")
     p.add_argument("--retry", type=float, default=3,
                    help="seconds between re-attach attempts; 0 runs the command once (default 3)")
-    p.add_argument("--hot-size", type=int, default=64, help="lanes in the Hot tab (default 64, an 8x8 grid)")
+    p.add_argument("--hot-size", type=int, default=None,
+                   help="lanes in the Hot tab (default: the lane count, at most 64, an 8x8 grid)")
     a = p.parse_args(argv)
 
     lanes = c.load_lanes(a.scoreboard, a.lanes_file)
     if not lanes:
         sys.exit("wall-gen: no lanes")
+    if a.hot_size is None:
+        a.hot_size = min(64, len(lanes))
     hot_cols = 8 if a.hot_size > 36 else 6
+    hot_grid = list(c.fit_grid(a.hot_size, (hot_cols, max(hot_cols, -(-a.hot_size // hot_cols)))))
     cfg = {"cmd": a.cmd, "session_fmt": a.session_fmt, "retry": a.retry,
-           "hot_size": a.hot_size, "slot_dir": os.path.abspath(os.path.join(a.out, "hot")), "hot_grid": [hot_cols, -(-a.hot_size // hot_cols)]}
+           "hot_size": a.hot_size, "slot_dir": os.path.abspath(os.path.join(a.out, "hot")), "hot_grid": hot_grid}
 
     os.makedirs(a.out, exist_ok=True)
     for f in os.listdir(a.out):  # drop stale pages from a previous, larger run

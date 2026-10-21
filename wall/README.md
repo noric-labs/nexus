@@ -15,7 +15,8 @@ project uses only the Python stdlib):
 - Lanes are grouped by terminal size, then sorted by game and lane id. 80x24 lanes go on
   8x8 pages and Brogue (100x34) lanes go on 6x6 pages. Tabs are named like `80x24 1/2`.
   The last page of each size is padded with empty panes, so every pane on a page is the
-  same size.
+  same size. A size whose lanes fit on one page gets the smallest near-square grid that
+  holds them instead (3 lanes: 2x2), so a small run gets big panes.
 - Each pane is named `lane · game · fault` (for example `l-042 · brogue · malloc-1pct`).
 - The layouts have no `default_tab_template` and no plugin panes, so there is no tab bar
   and no status bar. `config.kdl` turns pane frames on, starts in locked mode and turns off
@@ -25,7 +26,8 @@ project uses only the Python stdlib):
   every page pane runs `sh -c 'while :; do <cmd>; sleep 3; done'` (`--retry`), and
   `close_on_exit=false` is still set. When a lane is destroyed, the pane shows
   `[l-042: detached, retrying in 3s]` and re-attaches once the lane is back.
-- **Hot tab.** This is a fixed 8x8 grid of `wall-slot` panes. When a lane fails that is
+- **Hot tab.** This is a fixed grid of `wall-slot` panes: `--hot-size` of them, by default
+  the lane count up to 64 (8x8), sized the same way as a one-page grid. When a lane fails that is
   not already in Hot, `wall-pager` points the stalest slot at it (or an empty slot, if
   there is one). It does this by atomically rewriting `out/hot/slot-NN` and renaming that
   pane, so only that one pane re-attaches. The set is always the 64 lanes that failed most
