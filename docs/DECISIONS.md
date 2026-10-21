@@ -6,6 +6,22 @@ Commits are in the git history; the research is in the
 
 ## 2026-10-21
 
+### D-023 New fault kinds and the visual detector are verified in a 6-lane mock run
+A 3-minute mock-model slice (`slice-new` task) with these lanes:
+
+| Lane | Fault | Result |
+| --- | --- | --- |
+| bastet | winch-storm | 2 visual (cursor-outside-pane, blank-screen); Bastet has no SIGWINCH handling |
+| nsnake-rel | strace-eintr-read | ran under strace with the preloads passed through; no failure in 3 min |
+| pacman-rel | malloc-20pct | faults armed; exits 0, so nothing was scored |
+| brogue | keystorm | no failure |
+| greed | rlimit-tight | 1 hang (screen-frozen) |
+| frotz | time-warp | 1 visual (bad-cells): a false positive, since dfrotz echoes arrow-key escape bytes |
+
+**Decision:** a per-game `visual_ignore` list in `games.toml`; frotz ignores `bad-cells`.
+**Also:** the supervisor bug that left SIGPIPE and SIGXFSZ ignored in games is fixed, and
+the wall has size classes for `brogue-rel` and Pacman (29x32 on a 20x6 grid).
+
 ### D-022 Text tool-call recovery proxy (`lane/toolfix.py`), on by default
 **Decision:** pi talks to a local proxy that forwards requests to the broker. When a reply
 has no structured `tool_calls`, the proxy rebuilds one from the text. That covers each
