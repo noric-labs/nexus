@@ -6,6 +6,22 @@ Commits are in the git history; the research is in the
 
 ## 2026-10-21
 
+### D-032 Launch jobs with `scripts/detach.py`; pi comes from the `pi-next` package
+**Hang, part 2.** The D-031 brace form still hung on the Mac. `setsid nohup … &` only
+redirects fds 0–2, so the job still inherits any other fd the exec relay passes down, and
+that keeps `exec` waiting.
+- Reproduced locally with an extra inherited pipe on fd 3: the setsid form held it 8.0 s,
+  while `detach.py` (double fork, setsid, closing every fd ≥ 3, then exec) took 0.0 s.
+- `host-up.sh` now launches the scoreboard and lanes through it.
+- `procps-ng` is added to the session packages for debugging (the box had no `ps`).
+
+**pi.** Upstream `gominimal/pkgs` has pi 1.0.2. A sideload cannot shadow an upstream
+package name ("package 'pi' already exists"), so `torment-pkgs` ships `pi-next` 1.3.0. It
+builds, and a mock slice played on it.
+- It is in `[session].packages`.
+- `lane.sh` and `slice.sh` prefer `pi` on PATH; npm stays only as a fallback.
+- Upstream bump: gominimal/pkgs#965. Drop `pi-next` once that merges.
+
 ### D-031 `host-up.sh` hang: shell precedence, not Minimal
 **Cause:** `cmd && setsid nohup job >log 2>&1 </dev/null &` backgrounds the whole `&&`
 list in a subshell. The redirects only cover the last command, so the subshell keeps the

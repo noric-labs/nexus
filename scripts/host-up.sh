@@ -16,7 +16,7 @@
 #               scoreboard (+ the broker with --live). host_ip: boxes share the host network,
 #               no isolation, egress flags are not passed (a host_ip box does not enforce them).
 #   --via       exec (default): start scripts/scoreboard.sh and scripts/lane.sh in the session's
-#               own box with `min session exec <s> 'setsid nohup ... &'`.
+#               own box with `min session exec <s> 'python3 scripts/detach.py ...'`.
 #               run: `min session run <s> <task>`, kept in the background on this machine.
 #               Needs --network host_ip (see "Why --via exec" below).
 #
@@ -157,10 +157,11 @@ run mkdir -p "$LOADOUTS"
 run rm -rf "$LOADOUTS/nexus-lane"
 run cp -R "$ROOT/lane/loadout" "$LOADOUTS/nexus-lane"
 NPM=0
-[ -s "$ROOT/lane/loadout/vendor/pi.tgz" ] || {
+# pi comes from the pi-next sideload package in [session].packages; npm is only a fallback.
+if ! grep -q '"pi-next"' "$ROOT/minimal.toml" && [ ! -s "$ROOT/lane/loadout/vendor/pi.tgz" ]; then
     NPM=1
-    say "no lane/loadout/vendor/pi.tgz: lanes will npm-install pi (run lane/loadout/vendor-pi.sh to avoid that)"
-}
+    say "pi-next not in minimal.toml [session].packages and no vendor/pi.tgz: lanes will npm-install pi"
+fi
 if [ "$LIVE" = 1 ] && [ "$DRY" = 0 ]; then
     min loadout list | grep -qw broker || die "--live needs the 'broker' loadout (min loadout list)"
 fi
@@ -197,7 +198,9 @@ say "lanes will report to $SB_URL"
 if [ "$VIA" = exec ]; then
     # Prep first, then background ONLY the job. A trailing & after an && chain backgrounds
     # the whole chain in a subshell that keeps exec's stdout open, so exec never returns.
-    rexec "$SB" "mkdir -p \$HOME/.nexus && cd /workbench && { setsid nohup bash scripts/scoreboard.sh --heat $HEAT --pit $PIT >\$HOME/.nexus/scoreboard.log 2>&1 </dev/null & }"
+    # detach.py double-forks and closes every inherited fd: setsid+nohup still leaks fd 3+
+    # from the exec relay, which keeps exec waiting (D-032).
+    rexec "$SB" "cd /workbench && python3 scripts/detach.py --log \$HOME/.nexus/scoreboard.log -- bash scripts/scoreboard.sh --heat $HEAT --pit $PIT"
 else
     bg "run-$SB" min session run "$SB" scoreboard
 fi
@@ -251,7 +254,7 @@ compose into the session; use --via run --network host_ip (task packages do carr
         die "$s cannot reach $SB_URL (egress: --allow-dns-hosts $SB_HOST; see the policy above)"
     fi
     if [ "$VIA" = exec ]; then
-        rexec "$s" "cd /workbench && { setsid nohup bash scripts/lane.sh >\$HOME/.nexus/lane.log 2>&1 </dev/null & }"
+        rexec "$s" "cd /workbench && python3 scripts/detach.py --log \$HOME/.nexus/lane.log -- bash scripts/lane.sh"
     else
         bg "run-$s" min session run "$s" lane
     fi

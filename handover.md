@@ -59,13 +59,12 @@ section.
 
 ## Blockers and open decisions
 
-1. **`host-up.sh` hang: fixed (D-031).**
-   - Cause: `cmd && setsid nohup job … &` backgrounds the whole `&&` chain as a subshell.
-     That subshell keeps `exec`'s stdout open until the job exits, so `exec` never
-     returned.
-   - Fix: background only the job, `cmd && { setsid nohup job … & }`.
-   - Ruled out on the Mac: provisioning and ssh ControlMaster.
-   - Needs a re-run of `scripts/host-up.sh` to confirm end to end.
+1. **`host-up.sh` hang: fixed in two steps (D-031, D-032).**
+   - Jobs now launch through `scripts/detach.py`, which closes every inherited fd. The
+     setsid form leaked the exec relay's extra fds.
+   - Needs a host re-run to confirm.
+   - pi now comes from the `pi-next` sideload package. Upstream bump:
+     gominimal/pkgs#965.
 2. **Multi-VM topology (D-030, proposed, needs sign-off).** The constraints:
    - sessions share one VM, and more VMs need `minvmd --vm NAME` / `min --vm NAME`;
    - `exec` needs `--vm`;

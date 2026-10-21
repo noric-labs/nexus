@@ -72,7 +72,8 @@ export PATH=$STATE/bin:$PATH
 # pi: NEXUS_PI_BIN, else the install prefix. Loadout hooks do not run in the current
 # Minimal release (docs: concepts/sessions, "Hooks are inert"), so install it here:
 # from a vendored tarball if one is in the box, else from npm (needs registry egress).
-PI=${NEXUS_PI_BIN:-$NEXUS_PI_PREFIX/node_modules/.bin/pi}
+# Preferred: the pi-next sideload package (session packages) puts pi on PATH.
+PI=${NEXUS_PI_BIN:-$(command -v pi || echo "$NEXUS_PI_PREFIX/node_modules/.bin/pi")}
 if [ ! -x "$PI" ]; then
     mkdir -p "$NEXUS_PI_PREFIX"
     for tgz in "$HOME/.cache/nexus-lane/pi.tgz" "$ROOT/lane/loadout/vendor/pi.tgz"; do

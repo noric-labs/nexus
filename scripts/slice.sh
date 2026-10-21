@@ -70,7 +70,7 @@ for spec in "${LANES[@]}"; do
     # Give the harness a moment to create the tmux session before the agent attaches.
     for _ in $(seq 20); do tmux -L "$id" has-session -t game 2>/dev/null && break; sleep 0.5; done
     env "${common[@]}" NEXUS_INFERENCE_URL=$INFERENCE_URL \
-        NEXUS_PI_BIN="$B/pi/node_modules/.bin/pi" PI_CODING_AGENT_DIR="$OUT/$id/pi" \
+        NEXUS_PI_BIN="$(command -v pi || echo "$B/pi/node_modules/.bin/pi")" PI_CODING_AGENT_DIR="$OUT/$id/pi" \
         "$ROOT/lane/agent.sh" > "$OUT/$id/agent.log" 2>&1 &
     pids+=($!)
 done
