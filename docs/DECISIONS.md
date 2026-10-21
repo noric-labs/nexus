@@ -6,6 +6,29 @@ Commits are in the git history; the research is in the
 
 ## 2026-10-21
 
+### D-030 Multi-VM topology: named VMs, a gateway per VM, `own_ip` lanes (proposed)
+**Findings** from the `gominimal/minimal` source at 248b259 (filed as gominimal/inbox#1153):
+- **Named VMs.** Sessions share one VM. More VMs come from `minvmd --vm NAME`, and
+  `min --vm NAME` targets one. `exec` needs `--vm`; only `attach` finds a box's VM by
+  itself. Box names must be unique machine-wide.
+- **Host alias.** An `own_ip` box cannot reach the host alias `100.64.255.254` on any
+  port. Only `host_ip` boxes can, today.
+- **Cross-VM.** There is no box-to-box traffic between VMs: every VM uses the same
+  100.64/16.
+- **The `host-up.sh` hang.** `session exec` returns when its child exits. The Mac `min`
+  waits for ssh stdout EOF, and an ssh ControlMaster/ControlPersist setting can hold
+  that open. This is the suspect, not yet confirmed.
+
+**Proposed topology** (needs user sign-off):
+- **Per VM:** a `gw-<vm>` box on `host_ip` running a relay. Inference goes to the broker
+  on the host alias; events and screens go to the scoreboard through the host alias at
+  :8080, which is forwarded from the scoreboard box.
+- **Lanes:** `own_ip`, each with its own IP. Egress is allowed only to the gateway's /32;
+  no internet, and pi is vendored.
+- **Scoreboard:** `own_ip` with `--ingress 8080`, forwarded to the Mac's `localhost:8080`.
+
+**Risk:** the design depends on `host_ip` boxes keeping their host-alias access.
+
 ### D-029 First live mixed race: real resize bugs found; qwen3 and GLM preferred
 6 live lanes, 5 min (`slice-mixed`, about $0.25), all four models.
 
