@@ -6,6 +6,17 @@ Commits are in the git history; the research is in the
 
 ## 2026-10-21
 
+### D-021 New games: Bastet, nSnake and Pacman4console are packaged and build in Minimal
+All three ship a release and an ASan+UBSan build (`<game>` and `<game>-rel` in
+`games.toml`). Each is real-time, so it stresses timing and hang detection more than
+agent play.
+
+| Game | Version | Min size | Randomness | Notes |
+| --- | --- | --- | --- | --- |
+| Bastet | 0.43.2 | 80x24 | `srandom(time)`, pinned by torment-seed | Boost 1.91 dropped `boost/tr1`, so the build adds a one-line header shim instead of patching the source. No SIGWINCH handling, so a good target for winch-storm. |
+| nSnake | 3.0.1 | 80x24 | `srand(time)`, pinned by torment-seed | Exits 1 below 80x24. |
+| Pacman4console | 1.3 | 29x32 | `srand(time)`, pinned by torment-seed | Busy-waits, so each lane uses a full core. Every exit is 0, so `error_exit` never fires. Its 29x32 size is a new wall size class. |
+
 ### D-020 Run the full phase A probe (user-approved, up to about $25)
 **Scope:** all 4 models.
 - Ramp: 60 → 360 requests/min, 5 min per step.
