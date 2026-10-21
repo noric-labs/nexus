@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import statistics
 
 # $/M input, $/M output from the plan's model table (Workers AI pricing, 2026-10).
@@ -63,7 +64,8 @@ def parse_tool_call(resp: dict) -> tuple[bool, int, str]:
         return False, 0, name
     keys = args.get("keys")
     if isinstance(keys, str):
-        keys = keys.split()
+        # lane/game.ts notation: <Name> is one key, anything else one key per character.
+        keys = re.findall(r"<[^<>\s]+>|[\s\S]", keys)
     if not isinstance(keys, list) or not keys or not all(isinstance(k, str) for k in keys):
         return False, 0, name
     return True, len(keys), name

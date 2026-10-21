@@ -42,7 +42,8 @@ class TestRequest(unittest.TestCase):
         def resp(name, args):
             return {"choices": [{"message": {"tool_calls": [{"function": {"name": name, "arguments": args}}]}}]}
         self.assertEqual(summary.parse_tool_call(resp("send_keys", '{"keys":["h","j","Enter"]}')), (True, 3, "send_keys"))
-        self.assertEqual(summary.parse_tool_call(resp("send_keys", '{"keys":"h j"}')), (True, 2, "send_keys"))
+        self.assertEqual(summary.parse_tool_call(resp("send_keys", '{"keys":"hj<Enter>"}')), (True, 3, "send_keys"))
+        self.assertEqual(summary.parse_tool_call(resp("send_keys", '{"keys":"open mailbox<Enter>"}')), (True, 13, "send_keys"))
         self.assertEqual(summary.parse_tool_call(resp("screen", "{}")), (True, 0, "screen"))
         self.assertFalse(summary.parse_tool_call(resp("send_keys", '{"keys":[]}'))[0])
         self.assertFalse(summary.parse_tool_call(resp("send_keys", "{not json"))[0])

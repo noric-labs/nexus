@@ -19,10 +19,10 @@ game fails, so prefer actions that reach new code paths over actions that merely
 
 You have exactly two tools and no shell:
 
-- send_keys(keys): send a sequence of keys to the game. Batch several moves per call, up
-  to about 5, so each request makes progress. Keys use tmux send-keys names: printable
-  characters as themselves, and Enter, Escape, Up, Down, Left, Right, Space, BSpace, Tab,
-  C-c, C-z, F1..F12 for specials.
+- send_keys(keys): type a key sequence into the game, as one string. Batch several moves
+  per call, up to about 5, so each request makes progress. Plain text is typed literally;
+  named keys use angle brackets: <Enter>, <Esc>, <Tab>, <BSpace>, <Space>, <Up>, <Down>,
+  <Left>, <Right>, <C-x> for ctrl, <F1>..<F12>.
 - screen(): return the current 80x24 screen. You already receive the screen with every
   turn, so call it only if you believe the screen changed without your input.
 
@@ -45,18 +45,17 @@ TOOLS = [
         "function": {
             "name": "send_keys",
             "description": (
-                "Send a sequence of keys to the game pane via tmux send-keys. Batch up to "
-                "about 5 moves. Printable characters are sent as themselves; specials use "
-                "tmux names such as Enter, Escape, Up, Down, Left, Right, Space, BSpace, "
-                "Tab, C-c, F1."
+                "Type a key sequence into the game, then return the updated screen. Batch "
+                "several keys per call (e.g. 'jjjl' or 'open mailbox<Enter>'). Plain text is "
+                "typed literally; named keys use angle brackets: <Enter> <Esc> <Tab> <BSpace> "
+                "<Space> <Up> <Down> <Left> <Right> <C-x> (ctrl). Mirrors lane/game.ts."
             ),
             "parameters": {
                 "type": "object",
                 "properties": {
                     "keys": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "description": "Keys in order, e.g. [\"h\", \"h\", \"j\", \"i\", \"Escape\"].",
+                        "type": "string",
+                        "description": "Key sequence, e.g. 'look<Enter>' or '<Down><Down><Enter>'",
                     }
                 },
                 "required": ["keys"],
@@ -73,7 +72,7 @@ TOOLS = [
     },
 ]
 
-_MOVES = list("hjklyubn") + ["Up", "Down", "Left", "Right", "Enter", "Escape", "Space", "i", "s", ">", "<", "g", "x", "?"]
+_MOVES = list("hjklyubn") + ["<Up>", "<Down>", "<Left>", "<Right>", "<Enter>", "<Esc>", "<Space>", "i", "s", ">", "<lt>", "g", "x", "?"]
 _NOTES = [
     "moved; nothing new in view",
     "opened inventory, closed it",
@@ -116,7 +115,7 @@ def make_screen(rng: random.Random) -> str:
 
 def _action_line(rng: random.Random, turn: int) -> str:
     keys = [rng.choice(_MOVES) for _ in range(rng.randint(1, 5))]
-    return "turn %d: send_keys(%s) -> %s" % (turn, json.dumps(keys), rng.choice(_NOTES))
+    return "turn %d: send_keys(%s) -> %s" % (turn, json.dumps("".join(keys)), rng.choice(_NOTES))
 
 
 def estimate_tokens(obj) -> int:
@@ -124,6 +123,19 @@ def estimate_tokens(obj) -> int:
     o200k_base: a 5000-token estimate measured ~5.0k real tokens)."""
     s = obj if isinstance(obj, str) else json.dumps(obj)
     return int(len(s) / 4.2)
+
+
+# Per-model request extras that turn hidden reasoning off (or down): with it on, these
+# models spend the whole output budget reasoning and never reach the tool call.
+# Mirrors samplingParams in lane/models.json.
+MODEL_EXTRA = {
+    "@cf/openai/gpt-oss-20b": {"reasoning_effort": "low"},
+}
+NO_THINKING = {"chat_template_kwargs": {"enable_thinking": False}}
+
+
+def model_extra(model: str) -> dict:
+    return MODEL_EXTRA.get(model, NO_THINKING)
 
 
 def build_request(model: str, rng: random.Random, target_tokens: int = 5000, max_tokens: int = 200) -> dict:
@@ -150,6 +162,7 @@ def build_request(model: str, rng: random.Random, target_tokens: int = 5000, max
             "tool_choice": "auto",
             "max_tokens": max_tokens,
             "temperature": 0.7,
+            **model_extra(model),
         }
 
     # Grow the recent-actions log until the body reaches the target size.

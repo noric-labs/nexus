@@ -9,44 +9,121 @@
         {
           "id": "@cf/qwen/qwen3-30b-a3b-fp8",
           "name": "Qwen3 30B A3B fp8 (via broker)",
-          "reasoning": true,
-          "input": ["text"],
+          "reasoning": false,
+          "input": [
+            "text"
+          ],
           "contextWindow": 32768,
           "maxTokens": 4096,
-          "cost": { "input": 0.0509, "output": 0.335, "cacheRead": 0, "cacheWrite": 0 },
-          "compat": { "supportsStore": false, "supportsDeveloperRole": false, "supportsStrictMode": true, "supportsLongCacheRetention": false, "sendSessionAffinityHeaders": true }
+          "cost": {
+            "input": 0.0509,
+            "output": 0.335,
+            "cacheRead": 0,
+            "cacheWrite": 0
+          },
+          "compat": {
+            "supportsStore": false,
+            "supportsDeveloperRole": false,
+            "supportsStrictMode": true,
+            "supportsLongCacheRetention": false,
+            "sendSessionAffinityHeaders": true
+          },
+          "samplingParams": {
+            "chat_template_kwargs": {
+              "enable_thinking": false
+            }
+          }
         },
         {
           "id": "@cf/zai-org/glm-4.7-flash",
           "name": "GLM-4.7-Flash (via broker)",
-          "reasoning": true,
-          "input": ["text"],
+          "reasoning": false,
+          "input": [
+            "text"
+          ],
           "contextWindow": 131072,
           "maxTokens": 4096,
-          "cost": { "input": 0.0605, "output": 0.4, "cacheRead": 0, "cacheWrite": 0 },
-          "compat": { "supportsStore": false, "supportsDeveloperRole": false, "supportsStrictMode": true, "supportsLongCacheRetention": false, "sendSessionAffinityHeaders": true }
+          "cost": {
+            "input": 0.0605,
+            "output": 0.4,
+            "cacheRead": 0,
+            "cacheWrite": 0
+          },
+          "compat": {
+            "supportsStore": false,
+            "supportsDeveloperRole": false,
+            "supportsStrictMode": true,
+            "supportsLongCacheRetention": false,
+            "sendSessionAffinityHeaders": true
+          },
+          "samplingParams": {
+            "chat_template_kwargs": {
+              "enable_thinking": false
+            }
+          }
         },
         {
           "id": "@cf/google/gemma-4-26b-a4b-it",
           "name": "Gemma 4 26B A4B IT (via broker)",
-          "reasoning": true,
-          "input": ["text"],
+          "reasoning": false,
+          "input": [
+            "text"
+          ],
           "contextWindow": 256000,
           "maxTokens": 4096,
-          "cost": { "input": 0.1, "output": 0.3, "cacheRead": 0.05, "cacheWrite": 0 },
-          "thinkingLevelMap": { "off": "none", "minimal": null, "low": null, "medium": null, "high": "high", "xhigh": null, "max": null },
-          "compat": { "supportsStore": false, "supportsDeveloperRole": false, "supportsStrictMode": true, "supportsLongCacheRetention": false, "sendSessionAffinityHeaders": true }
+          "cost": {
+            "input": 0.1,
+            "output": 0.3,
+            "cacheRead": 0.05,
+            "cacheWrite": 0
+          },
+          "compat": {
+            "supportsStore": false,
+            "supportsDeveloperRole": false,
+            "supportsStrictMode": true,
+            "supportsLongCacheRetention": false,
+            "sendSessionAffinityHeaders": true
+          },
+          "samplingParams": {
+            "chat_template_kwargs": {
+              "enable_thinking": false
+            }
+          }
         },
         {
           "id": "@cf/openai/gpt-oss-20b",
           "name": "GPT OSS 20B (via broker)",
           "reasoning": true,
-          "input": ["text"],
+          "input": [
+            "text"
+          ],
           "contextWindow": 128000,
           "maxTokens": 4096,
-          "cost": { "input": 0.2, "output": 0.3, "cacheRead": 0, "cacheWrite": 0 },
-          "thinkingLevelMap": { "off": null, "minimal": null, "low": "low", "medium": "medium", "high": "high", "xhigh": null, "max": null },
-          "compat": { "supportsStore": false, "supportsDeveloperRole": false, "supportsStrictMode": true, "supportsLongCacheRetention": false, "sendSessionAffinityHeaders": true }
+          "cost": {
+            "input": 0.2,
+            "output": 0.3,
+            "cacheRead": 0,
+            "cacheWrite": 0
+          },
+          "thinkingLevelMap": {
+            "off": null,
+            "minimal": null,
+            "low": "low",
+            "medium": "medium",
+            "high": "high",
+            "xhigh": null,
+            "max": null
+          },
+          "compat": {
+            "supportsStore": false,
+            "supportsDeveloperRole": false,
+            "supportsStrictMode": true,
+            "supportsLongCacheRetention": false,
+            "sendSessionAffinityHeaders": true
+          },
+          "samplingParams": {
+            "reasoning_effort": "low"
+          }
         }
       ]
     }

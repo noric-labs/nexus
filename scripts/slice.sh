@@ -16,6 +16,13 @@ free_port() { python3 -c "import socket;s=socket.socket();s.bind(('127.0.0.1',0)
 PORT=${SLICE_PORT:-$(free_port)}
 MOCK_PORT=${SLICE_MOCK_PORT:-$(free_port)}
 SB=http://127.0.0.1:$PORT
+MODEL=${SLICE_MODEL:-@cf/qwen/qwen3-30b-a3b-fp8}
+# SLICE_LIVE=1 sends real inference through the broker (spends Workers AI credit).
+if [ "${SLICE_LIVE:-0}" = 1 ]; then
+    INFERENCE_URL=${SLICE_INFERENCE_URL:-http://100.64.255.254:8899/workers-ai/v1}
+else
+    INFERENCE_URL=http://127.0.0.1:$MOCK_PORT/v1
+fi
 
 mkdir -p "$OUT/bin"
 cat > "$OUT/bin/nexus-lane" <<EOF
@@ -55,19 +62,19 @@ for spec in "${LANES[@]}"; do
     read -r id game fault seed <<< "$spec"
     mkdir -p "$OUT/$id"
     common=(NEXUS_LANE_ID=$id NEXUS_GAME=$game NEXUS_FAULT=$fault NEXUS_SEED=$seed
-            NEXUS_MODEL=@cf/qwen/qwen3-30b-a3b-fp8 NEXUS_SCOREBOARD_URL=$SB
+            NEXUS_MODEL=$MODEL NEXUS_SCOREBOARD_URL=$SB
             NEXUS_OUT=$OUT/$id NEXUS_TMUX_SOCKET=$id TERM=xterm-256color)
     env "${common[@]}" nexus-lane run > "$OUT/$id/harness.log" 2>&1 &
     pids+=($!)
     # Give the harness a moment to create the tmux session before the agent attaches.
     for _ in $(seq 20); do tmux -L "$id" has-session -t game 2>/dev/null && break; sleep 0.5; done
-    env "${common[@]}" NEXUS_INFERENCE_URL=http://127.0.0.1:$MOCK_PORT/v1 \
+    env "${common[@]}" NEXUS_INFERENCE_URL=$INFERENCE_URL \
         NEXUS_PI_BIN="$B/pi/node_modules/.bin/pi" PI_CODING_AGENT_DIR="$OUT/$id/pi" \
         "$ROOT/lane/agent.sh" > "$OUT/$id/agent.log" 2>&1 &
     pids+=($!)
 done
 
-echo "slice running for ${SECONDS_TO_RUN}s; output in $OUT"
+echo "slice running for ${SECONDS_TO_RUN}s (model $MODEL via $INFERENCE_URL); output in $OUT"
 end=$((SECONDS + SECONDS_TO_RUN))
 while [ $SECONDS -lt $end ]; do sleep 5; done
 

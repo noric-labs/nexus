@@ -22,7 +22,7 @@ import time
 import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-KEYS = list("hjklyubnis><gx?") + ["Up", "Down", "Left", "Right", "Enter", "Escape", "Space"]
+KEYS = list("hjklyubnis>gx?") + ["<lt>", "<Up>", "<Down>", "<Left>", "<Right>", "<Enter>", "<Esc>", "<Space>"]
 
 
 class Limiter:
@@ -129,7 +129,7 @@ class Handler(BaseHTTPRequestHandler):
         with st.lock:
             r = st.rng.random() * 100
             nkeys = st.rng.choice([1, 2, 3, 3, 4, 4, 5, 5, 5, 6])
-            keys = [st.rng.choice(KEYS) for _ in range(nkeys)]
+            keys = "".join(st.rng.choice(KEYS) for _ in range(nkeys))  # lane/game.ts notation
         if r < st.error_pct:
             return self._send(500, {"errors": [{"message": "internal error"}], "success": False})
         prompt_tokens = int(len(raw) / 4.2)

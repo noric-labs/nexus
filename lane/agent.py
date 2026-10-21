@@ -167,6 +167,17 @@ class Pi:
                 os.killpg(self.p.pid, signal.SIGKILL)
 
 
+STALL_SECS = float(env.get("NEXUS_STALL_SECS", "60") or 0)
+
+
+def stats_age():
+    """Seconds since game.ts last wrote stats (it does after every turn and action)."""
+    try:
+        return time.time() - os.path.getmtime(STATS)
+    except OSError:
+        return 0.0
+
+
 def time_left():
     return DEADLINE <= 0 or time.time() - start < DEADLINE
 
@@ -185,9 +196,23 @@ def main():
         while not stop.is_set() and time_left() and pi.alive() and not capped():
             pi.prompt(goal if first else CONTINUE_MSG)
             first = False
+            run_start = time.time()
+            stalled = False
             while not pi.settled.wait(1.0):
                 if stop.is_set() or not time_left():
                     break
+                # A provider request can hang with no error; don't let the lane freeze.
+                if STALL_SECS and min(stats_age(), time.time() - run_start) > STALL_SECS:
+                    stalled = True
+                    event("agent_error", f"run stalled > {STALL_SECS:.0f}s; aborting")
+                    log(f"run stalled > {STALL_SECS:.0f}s; aborting")
+                    pi.send({"type": "abort"})
+                    if not pi.settled.wait(10.0):
+                        log("abort did not settle; restarting pi")
+                        pi.close()
+                    break
+            if stalled:
+                continue
             if stop.is_set() or not time_left():
                 break
             if pi.errors_in_run:
