@@ -42,13 +42,26 @@ This file records the decisions and milestones that the code is built against.
 1. **M0: repos and packages.** Done when `min package build` passes for libfiu,
    libfaketime, the seed shim, dfrotz and Brogue CE (ASan+UBSan), and dfrotz runs under
    `fiu-run` in a session. Scale test phase A runs here.
+   - *Status (2026-10-21): done. All 12 packages build in Minimal. Phase A is running
+     (D-020).*
 2. **M1: 3-lane slice.** Done when 3 lanes (dfrotz, Brogue, greed) appear on the leaderboard
    and the wall, at least one failure is counted with a stack hash, and destroying a lane
    brings it back. Scale test phases B and C run here.
+   - *Status: done in one box (`slice.sh` task, mock model and live Gemma).*
+   - *Done: stack hashes, heat rollover.*
+   - *Open: real-session `host-up.sh` and the wall on the Mac need a host run; phases B
+     and C are not run.*
 3. **M2: faults, sanitizers, fuzzing.** Done when every fault config emits events and the
    board shows unique clusters per lane.
+   - *Status: mostly done. The fault kinds are libfiu (delayed), strace, rlimit, faketime,
+     winch-storm and keystorm.*
+   - *Done: sanitizer and crash clusters, error_exit, the visual detector.*
+   - *Open: AFL++ fuzz lanes.*
 4. **M3: race UI and wall.** Done when the full race spec above runs on the second display,
    the wall shows 64 lanes per page, and the Hot tab follows failures within 5 s.
+   - *Status: built and verified headless. The race UI and the wall (local demo) work.*
+   - *Open: the real second display, and wall attach through `min session exec` +
+     `ttyview`.*
 5. **M4: scale to the measured ceiling.** Done when that lane count runs 24 h unattended
    within rate limits, with a replayable record for every failure.
 
