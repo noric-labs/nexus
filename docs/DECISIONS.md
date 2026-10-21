@@ -6,6 +6,30 @@ Commits are in the git history; the research is in the
 
 ## 2026-10-21
 
+### D-028 All four models play live once the proxy normalises requests
+**Problem:** the live toolfix check found qwen3 and gpt-oss failing with 400 "Bad input"
+after the first turns. Workers AI's schema for those models rejects two things pi sends:
+- OpenAI multi-part `content` arrays;
+- `content: null` on assistant tool-call turns.
+
+GLM and Gemma accept both.
+
+**Fix:** `toolfix.py` now joins text-only part arrays into a string and sets null
+assistant content to `""`. `NEXUS_TOOLFIX_DUMP` keeps rejected request bodies for
+debugging.
+
+**Result** (3 live lanes, 4 min each, about $0.25):
+
+| Model | Actions | Structured tool calls | Upstream errors |
+| --- | --- | --- | --- |
+| qwen3 | 48 | 50/50 | 0 |
+| glm-4.7-flash | 44 | 50/50 | 0 |
+| gpt-oss | 43 | 88/93 (1 recovered) | 0 |
+
+In pi's streaming mode the models mostly return structured calls, so text recovery is a
+small safety net and request normalisation was the real fix. This revises D-016:
+qwen3, glm and gpt-oss are usable, not just Gemma.
+
 ### D-027 Phase A results: no rate limit found up to 360 req/min per model
 22,687 live requests, **$15.20 actual** (qwen3 $3.21, gpt-oss $11.42, glm $0.20, gemma
 $0.38). The full table is in `docs/probe-phaseA-2026-10-21.txt`.

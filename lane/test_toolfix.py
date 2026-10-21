@@ -339,5 +339,24 @@ class ProxyAgainstMock(unittest.TestCase):
             p.wait()
 
 
+class RequestNormalisation(unittest.TestCase):
+    def test_flattens_text_only_part_arrays(self):
+        body = {"messages": [
+            {"role": "system", "content": [{"type": "text", "text": "a"}, {"type": "text", "text": "b"}]},
+            {"role": "user", "content": "plain"},
+            {"role": "tool", "tool_call_id": "x", "content": [{"type": "text", "text": "screen"}]},
+            {"role": "user", "content": [{"type": "text", "text": "t"}, {"type": "image_url", "image_url": {}}]},
+            {"role": "assistant", "content": None, "tool_calls": []},
+        ]}
+        self.assertTrue(toolfix.flatten_text_content(body))
+        m = body["messages"]
+        self.assertEqual(m[0]["content"], "a\nb")
+        self.assertEqual(m[1]["content"], "plain")
+        self.assertEqual(m[2]["content"], "screen")
+        self.assertIsInstance(m[3]["content"], list)  # mixed parts left alone
+        self.assertEqual(m[4]["content"], "")  # null assistant content -> ""
+        self.assertFalse(toolfix.flatten_text_content({"messages": [{"role": "user", "content": "x"}]}))
+
+
 if __name__ == "__main__":
     unittest.main()

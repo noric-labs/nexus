@@ -67,6 +67,25 @@ HOP = {"connection", "keep-alive", "proxy-authenticate", "proxy-authorization", 
 # ---------------------------------------------------------------------------- tools
 
 
+def flatten_text_content(body):
+    """Workers AI's schema for some models (qwen3, gpt-oss) only accepts string message
+    content and rejects OpenAI multi-part arrays with a 400. Join text-only part arrays
+    into one string, and give assistant tool-call turns "" instead of null content (also a
+    400 there). Returns True when the body changed."""
+    changed = False
+    for m in (body or {}).get("messages") or []:
+        if isinstance(m, dict) and m.get("role") == "assistant" and m.get("content") is None:
+            m["content"] = ""
+            changed = True
+        c = m.get("content") if isinstance(m, dict) else None
+        if isinstance(c, list) and c and all(
+                isinstance(p, dict) and p.get("type") == "text" and isinstance(p.get("text"), str)
+                for p in c):
+            m["content"] = "\n".join(p["text"] for p in c)
+            changed = True
+    return changed
+
+
 def declared_tools(body):
     """{name: parameters-schema} for the request's function tools."""
     out = {}
@@ -551,6 +570,11 @@ class Proxy(BaseHTTPRequestHandler):
             "/chat/completions") else {}
         stream = bool(isinstance(body, dict) and body.get("stream"))
         model = body.get("model", "") if isinstance(body, dict) else ""
+        if isinstance(body, dict) and flatten_text_content(body):
+            raw = json.dumps(body).encode()
+            for k in [k for k in headers if k.lower() == "content-length"]:
+                del headers[k]
+            headers["content-length"] = str(len(raw))
         with self.rec.lock:
             self.rec.counts["requests"] += 1
             if tools:
@@ -569,6 +593,10 @@ class Proxy(BaseHTTPRequestHandler):
             if resp.status != 200 or not tools:
                 if tools:
                     self.rec.record(model, stream, {"outcome": "error"}, resp.status)
+                dump = os.environ.get("NEXUS_TOOLFIX_DUMP")
+                if dump and resp.status >= 400:  # debugging aid: keep the rejected request
+                    with open(dump, "a") as f:
+                        f.write(json.dumps({"status": resp.status, "request": body}) + "\n")
                 if is_sse:
                     return self._relay_stream(resp)
                 return self._send(resp.status, resp.getheaders(), resp.read())

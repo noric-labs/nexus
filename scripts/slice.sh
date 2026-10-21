@@ -48,7 +48,7 @@ python3 "$ROOT/lane/mock_openai.py" --port "$MOCK_PORT" --log "$OUT/mock.ndjson"
 pids+=($!)
 until curl -sf "$SB/api/state" > /dev/null; do sleep 0.5; done
 
-# lane_id game fault seed; override with SLICE_LANES="id game fault seed;..."
+# lane_id game fault seed [model]; override with SLICE_LANES="id game fault seed [model];..."
 if [ -n "${SLICE_LANES:-}" ]; then
     IFS=';' read -r -a LANES <<< "$SLICE_LANES"
 else
@@ -59,10 +59,11 @@ else
     )
 fi
 for spec in "${LANES[@]}"; do
-    read -r id game fault seed <<< "$spec"
+    read -r id game fault seed lane_model <<< "$spec"
+    lane_model=${lane_model:-$MODEL}
     mkdir -p "$OUT/$id"
     common=(NEXUS_LANE_ID=$id NEXUS_GAME=$game NEXUS_FAULT=$fault NEXUS_SEED=$seed
-            NEXUS_MODEL=$MODEL NEXUS_SCOREBOARD_URL=$SB
+            NEXUS_MODEL=$lane_model NEXUS_SCOREBOARD_URL=$SB
             NEXUS_OUT=$OUT/$id NEXUS_TMUX_SOCKET=$id TERM=xterm-256color)
     env "${common[@]}" nexus-lane run > "$OUT/$id/harness.log" 2>&1 &
     pids+=($!)
