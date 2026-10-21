@@ -6,6 +6,10 @@ Commits are in the git history; the research is in the
 
 ## 2026-10-21
 
+### D-026 AFL++ fuzz lanes deferred to the user
+An attempt to delegate the M2 AFL++ fuzzing work was cut off by a safety classifier
+before it started, and nothing was written. The item stays open until the user scopes it.
+
 ### D-025 DCSS ambient UBSan reports are baselined
 `crawl-asan` emitted 13 distinct UBSan stack hashes in 2 min across 3 fault-free lanes,
 about 50–66 points per lane.
