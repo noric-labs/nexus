@@ -1,0 +1,132 @@
+{
+  "version": 1,
+  "defaults": {
+    "profile": "fast"
+  },
+  "profiles": {
+    "fast": {
+      "model": "@cf/qwen/qwen3-30b-a3b-fp8",
+      "style": "win",
+      "interval_ms": 1000,
+      "notes": "qwen3: fast (about 1.7 s per action), no rate limit seen up to 360 req/min (D-027). Best on Greed and the real-time games; cannot solve Zork or DCSS (D-037)."
+    },
+    "glm-flash": {
+      "model": "@cf/zai-org/glm-4.7-flash",
+      "style": "win",
+      "interval_ms": 1000,
+      "notes": "GLM-4.7-Flash: fast, plays live through toolfix (D-028, D-029)."
+    },
+    "thinker": {
+      "model": "@cf/deepseek-ai/deepseek-v4.1-flash",
+      "style": "win",
+      "interval_ms": 7000,
+      "notes": "DeepSeek V4.1 Flash: solves Zork (40) and reaches DCSS Dungeon:2 (D-037). Workers AI caps it at about 36 req/min per account, so pace each lane at 7 s."
+    },
+    "glm53": {
+      "model": "@cf/zai-org/glm-5.3",
+      "style": "win",
+      "interval_ms": 5000,
+      "notes": "GLM-5.3: strong on Zork (49) but 18-240 s per action across 6 lanes, many stalls (D-037). Use when speed does not matter."
+    },
+    "opus-fast": {
+      "model": "claude-opus-5-5",
+      "style": "win",
+      "interval_ms": 1000,
+      "notes": "Claude Opus 5.5 in fast mode (beta fast-mode-2026-02-01, speed fast, effort low) through the broker's /anthropic route. Fast mode is $8/$40 per MTok, 2x standard Opus."
+    },
+    "haiku": {
+      "model": "claude-haiku-5-5",
+      "style": "win",
+      "interval_ms": 1000,
+      "notes": "Claude Haiku 5.5 (effort low) through the broker's /anthropic route. $0.10/$0.50 per MTok."
+    },
+    "local": {
+      "model": "gemma-4-26b-a4b-it-qat-mlx",
+      "style": "win",
+      "interval_ms": 1000,
+      "notes": "Gemma 4 26B-A4B (MoE, 4B active) served by LM Studio on the host (127.0.0.1:1234, reached from host_ip lanes at 100.64.255.254:1234). About 1 s for a 1K-token prompt, native tool calls, no toolfix, no spend. qwen3.8-27b-mlx was tried first: it ignores enable_thinking=false and spends 13 s reasoning per turn."
+    }
+  },
+  "models": {
+    "@cf/qwen/qwen3-30b-a3b-fp8": {
+      "min_interval_ms": 1000
+    },
+    "@cf/zai-org/glm-4.7-flash": {
+      "min_interval_ms": 1000
+    },
+    "@cf/deepseek-ai/deepseek-v4.1-flash": {
+      "min_interval_ms": 7000,
+      "max_concurrent_lanes": 4,
+      "notes": "Probe 2026-10-21: 0% 429s at 30 req/min, 70% 429s at 60 req/min; sustains about 36 req/min. 4 lanes at 7 s = about 34 req/min."
+    },
+    "@cf/zai-org/glm-5.3": {
+      "min_interval_ms": 5000,
+      "max_concurrent_lanes": 3,
+      "notes": "Slow: 18-240 s per action across 6 lanes (D-037)."
+    },
+    "@cf/zai-org/glm-5.3-flash": {
+      "min_interval_ms": 15000,
+      "max_concurrent_lanes": 2,
+      "notes": "Slow: p95 13 s even at 15 req/min, reasons unless reasoning_effort is low (probe 2026-10-21). Too slow to play."
+    },
+    "claude-opus-5-5": {
+      "min_interval_ms": 1000,
+      "max_concurrent_lanes": 6,
+      "notes": "Fast mode has its own rate limit, separate from standard Opus. The broker's Anthropic key needs credit (2026-10-21: 'credit balance is too low')."
+    },
+    "claude-haiku-5-5": {
+      "min_interval_ms": 1000
+    },
+    "gemma-4-26b-a4b-it-qat-mlx": {
+      "min_interval_ms": 1000,
+      "max_concurrent_lanes": 1,
+      "notes": "One local model on the Mac: LM Studio serves requests one at a time."
+    }
+  },
+  "games": {
+    "frotz-zork1": {
+      "profile": "thinker",
+      "prompt": "frotz-zork1.md"
+    },
+    "dcss": {
+      "profile": "thinker",
+      "prompt": "dcss.md"
+    },
+    "brogue": {
+      "profile": "fast",
+      "prompt": "brogue.md"
+    },
+    "brogue-rel": {
+      "profile": "fast",
+      "prompt": "brogue.md"
+    },
+    "greed": {
+      "profile": "fast",
+      "prompt": "greed.md"
+    },
+    "nsnake": {
+      "profile": "fast",
+      "prompt": "nsnake.md"
+    },
+    "nsnake-rel": {
+      "profile": "fast",
+      "prompt": "nsnake.md"
+    },
+    "pacman": {
+      "profile": "fast",
+      "prompt": "pacman.md"
+    },
+    "pacman-rel": {
+      "profile": "fast",
+      "prompt": "pacman.md"
+    },
+    "bastet": {
+      "profile": "fast",
+      "prompt": "bastet.md"
+    },
+    "bastet-rel": {
+      "profile": "fast",
+      "prompt": "bastet.md"
+    }
+  }
+}

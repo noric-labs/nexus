@@ -59,7 +59,7 @@ export class Sfx {
   play(name) {
     if (this.muted || !this.ctx) return false;
     const now = this.ctx.currentTime;
-    const gap = { sanitizer: 0.25, crash: 0.2, hang: 0.4, error_exit: 0.2, visual: 0.2, agent_error: 0.5 }[name] ?? 0.1;
+    const gap = { splat: 0.12, crunch: 0.12, sanitizer: 0.25, crash: 0.2, hang: 0.4, error_exit: 0.2, visual: 0.2, agent_error: 0.5 }[name] ?? 0.1;
     if (now - (this.last.get(name) ?? -9) < gap) return false;
     this.last.set(name, now);
     const fn = SOUNDS[name];
@@ -82,6 +82,10 @@ const SOUNDS = {
   // glitch: fast random arpeggio
   visual: s => { const f = [523, 1568, 784, 2093, 659, 1319]; f.forEach((x, i) => s.tone(x, 0.04, { at: i * 0.035, vol: 0.2 })); },
   agent_error: s => s.tone(220, 0.08, { type: "triangle", vol: 0.2 }),
+  // pilot burst: a wet, low-passed slap with a short tail
+  splat: s => { s.noise(0.18, { vol: 0.9, freq: 900, q: 4 }); s.noise(0.35, { at: 0.04, vol: 0.4, freq: 350 }); s.tone(70, 0.12, { type: "sine", to: 40, vol: 0.5 }); },
+  // hull breaking up
+  crunch: s => { for (let i = 0; i < 4; i++) s.noise(0.05, { at: i * 0.03, vol: 0.6, freq: 2500 - i * 400, q: 3 }); },
   lead: s => { [523, 659, 784, 1047].forEach((f, i) => s.tone(f, 0.12, { at: i * 0.09, vol: 0.3 })); },
   newcluster: s => { [784, 1047, 1568].forEach((f, i) => s.tone(f, 0.08, { at: i * 0.06, vol: 0.25, type: "triangle" })); },
   light: s => s.tone(440, 0.18, { vol: 0.35 }),

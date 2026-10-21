@@ -1,0 +1,438 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Nexus agents</title>
+<style>
+:root {
+  --bg: #04050a; --panel: #0a0d1a; --line: #1b2340; --cyan: #00f0ff; --magenta: #ff2bd6;
+  --yellow: #f5e800; --text: #dfe8ff; --dim: #7d88a8; --bad: #ff4d6a;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text);
+  font: 13px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+header { position: sticky; top: 0; z-index: 2; display: flex; flex-wrap: wrap; gap: 8px 16px;
+  align-items: center; padding: 10px 16px; background: rgba(4,5,10,.94); border-bottom: 1px solid var(--line); }
+h1 { margin: 0; font-size: 16px; letter-spacing: .12em; color: var(--cyan); text-shadow: 0 0 8px rgba(0,240,255,.6); }
+h1 b { color: var(--magenta); text-shadow: 0 0 8px rgba(255,43,214,.6); }
+.meta { color: var(--dim); flex: 1; min-width: 200px; overflow-wrap: anywhere; }
+.spacer { flex: 1; }
+main { max-width: 1200px; margin: 0 auto; padding: 12px 16px 60px; }
+section { background: var(--panel); border: 1px solid var(--line); border-radius: 4px; margin: 14px 0; padding: 12px 14px; }
+h2 { margin: 0 0 10px; font-size: 13px; letter-spacing: .14em; color: var(--yellow); text-transform: uppercase; }
+h2 small { color: var(--dim); letter-spacing: 0; text-transform: none; font-weight: normal; }
+button { font: inherit; color: var(--cyan); background: transparent; border: 1px solid var(--cyan);
+  border-radius: 3px; padding: 4px 10px; cursor: pointer; }
+button:hover:not(:disabled) { background: rgba(0,240,255,.12); box-shadow: 0 0 8px rgba(0,240,255,.4); }
+button.primary { color: var(--bg); background: var(--cyan); font-weight: bold; }
+button.primary:hover:not(:disabled) { background: #6ff8ff; }
+button.danger { color: var(--magenta); border-color: var(--magenta); }
+button:disabled { opacity: .35; cursor: default; }
+input, select, textarea { font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--line);
+  border-radius: 3px; padding: 3px 6px; width: 100%; min-width: 0; }
+input:focus, select:focus, textarea:focus { outline: none; border-color: var(--cyan); box-shadow: 0 0 6px rgba(0,240,255,.35); }
+textarea { resize: vertical; min-height: 2.2em; }
+.err-field { border-color: var(--bad) !important; box-shadow: 0 0 6px rgba(255,77,106,.4); }
+.err-msg { color: var(--bad); font-size: 12px; margin-top: 2px; }
+.tablewrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; }
+th { text-align: left; color: var(--dim); font-weight: normal; padding: 4px 6px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+td { padding: 5px 6px; vertical-align: top; border-bottom: 1px solid rgba(27,35,64,.6); }
+td.name { color: var(--cyan); white-space: nowrap; }
+.unknown { color: var(--magenta); font-size: 11px; display: block; }
+.row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.row label { color: var(--dim); }
+.banner { padding: 8px 12px; border-radius: 3px; margin: 12px 0 0; border: 1px solid; }
+.banner.info { color: var(--yellow); border-color: var(--yellow); }
+.banner.bad { color: var(--bad); border-color: var(--bad); }
+.banner.ok { color: var(--cyan); border-color: var(--cyan); }
+.banner ul { margin: 6px 0 0; padding-left: 18px; }
+.banner code { color: var(--text); }
+.games { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 10px; }
+.game { border: 1px solid var(--line); border-radius: 3px; padding: 8px; }
+.game.set { border-color: rgba(0,240,255,.45); }
+.game h3 { margin: 0 0 6px; font-size: 13px; color: var(--cyan); display: flex; justify-content: space-between; gap: 8px; }
+.game label { display: block; color: var(--dim); margin-top: 5px; }
+#raw { min-height: 420px; white-space: pre; }
+.hint { color: var(--dim); font-size: 12px; }
+.dirty { color: var(--magenta); }
+</style>
+</head>
+<body>
+<header>
+  <h1>NEXUS <b>AGENTS</b></h1>
+  <span class="meta" id="meta">loading…</span>
+  <span id="dirty" class="dirty"></span>
+  <button id="btnView">Raw JSON</button>
+  <button id="btnReload">Reload</button>
+  <button id="btnSave" class="primary">Save</button>
+</header>
+<main>
+  <div id="banners"></div>
+  <div id="form">
+    <section>
+      <h2>Defaults</h2>
+      <div class="row"><label for="defProfile">profile</label><div id="defWrap" style="min-width:200px"></div></div>
+    </section>
+    <section>
+      <h2>Profiles <small>model, play style and pacing</small></h2>
+      <div class="tablewrap"><table id="profiles"></table></div>
+      <div class="row" style="margin-top:8px">
+        <input id="newProfile" placeholder="new profile name" style="width:220px">
+        <button id="btnAddProfile">Add profile</button>
+      </div>
+    </section>
+    <section>
+      <h2>Model limits <small>per model, across lanes</small></h2>
+      <div class="tablewrap"><table id="models"></table></div>
+      <div class="row" style="margin-top:8px">
+        <select id="newModel" style="width:340px"></select>
+        <button id="btnAddModel">Add model limit</button>
+      </div>
+    </section>
+    <section>
+      <h2>Games <small>overrides per game; empty fields are left out of the file</small></h2>
+      <div class="games" id="games"></div>
+    </section>
+  </div>
+  <section id="rawView" hidden>
+    <h2>Raw JSON <small>edit, then Apply to load it into the form (Save writes it)</small></h2>
+    <textarea id="raw" spellcheck="false"></textarea>
+    <div class="row" style="margin-top:8px"><button id="btnApplyRaw">Apply</button><span class="hint" id="rawMsg"></span></div>
+  </section>
+</main>
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const S = { cfg: null, saved: "", etag: "", models: [], games: [], writable: false, path: "",
+  errors: {}, local: {}, localText: {}, raw: false, disabled: false };
+
+function h(tag, attrs, ...kids) {
+  const el = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs || {})) {
+    if (v == null || v === false) continue;
+    if (k.startsWith("on")) el.addEventListener(k.slice(2), v);
+    else if (k === "value") el.value = v;
+    else el.setAttribute(k, v === true ? "" : v);
+  }
+  for (const c of kids.flat()) if (c != null) el.append(c);
+  return el;
+}
+
+const obj = (o, k) => (o[k] && typeof o[k] === "object" && !Array.isArray(o[k])) ? o[k] : (o[k] = {});
+const ro = () => !S.writable;
+
+// Returns the node(s) for a field: the input plus its inline server error.
+function withErr(field, input) {
+  const msg = S.errors[field] || S.local[field];
+  if (msg) input.classList.add("err-field");
+  if (ro()) input.disabled = true;
+  return msg ? [input, h("div", { class: "err-msg" }, msg)] : [input];
+}
+
+function setOrDelete(o, k, v) { if (v === "" || v == null) delete o[k]; else o[k] = v; }
+function intOrRaw(s) {
+  s = s.trim();
+  if (s === "") return "";
+  return /^-?\d+$/.test(s) ? Number(s) : s; // a non-integer goes to the server, which reports it
+}
+
+function numInput(o, k, field, placeholder) {
+  return withErr(field, h("input", { type: "text", inputmode: "numeric", value: o[k] ?? "", placeholder,
+    onchange: (e) => { setOrDelete(o, k, intOrRaw(e.target.value)); touched(); } }));
+}
+function textInput(o, k, field, placeholder) {
+  return withErr(field, h("input", { type: "text", value: o[k] ?? "", placeholder,
+    onchange: (e) => { setOrDelete(o, k, e.target.value); touched(); } }));
+}
+function textArea(o, k, field) {
+  return withErr(field, h("textarea", { rows: 2, value: o[k] ?? "",
+    onchange: (e) => { setOrDelete(o, k, e.target.value); touched(); } }));
+}
+function selectInput(options, value, onchange, field, emptyLabel) {
+  const sel = h("select", { onchange: (e) => { onchange(e.target.value); touched(); } });
+  if (emptyLabel != null) sel.append(h("option", { value: "" }, emptyLabel));
+  const opts = [...options];
+  if (value && !opts.includes(value)) opts.push(value);
+  for (const o of opts) sel.append(h("option", { value: o }, o + (options.includes(o) ? "" : "  (unknown)")));
+  sel.value = value || "";
+  return withErr(field, sel);
+}
+
+function render() {
+  if (!S.cfg) return;
+  const cfg = S.cfg;
+  const profiles = obj(cfg, "profiles"), models = obj(cfg, "models"), games = obj(cfg, "games"),
+    defs = obj(cfg, "defaults");
+  const pnames = Object.keys(profiles);
+
+  $("defWrap").replaceChildren(...selectInput(pnames, defs.profile, (v) => setOrDelete(defs, "profile", v),
+    "defaults.profile", pnames.length ? null : "(no profiles)"));
+  $("defWrap").firstChild.id = "defProfile";
+
+  // Profiles
+  const pt = $("profiles");
+  pt.replaceChildren(h("tr", {}, ["name", "model", "style", "interval_ms", "max_tokens", "sampling (JSON)", "notes", ""]
+    .map((t) => h("th", {}, t))));
+  for (const name of pnames) {
+    const p = profiles[name] && typeof profiles[name] === "object" ? profiles[name] : (profiles[name] = {});
+    const f = "profiles." + name;
+    const nameIn = h("input", { type: "text", value: name, style: "width:120px",
+      onchange: (e) => renameProfile(name, e.target.value.trim()) });
+    const samp = h("textarea", { rows: 1, spellcheck: "false", style: "min-width:180px",
+      onchange: (e) => {
+        const t = e.target.value.trim();
+        delete S.local[f + ".sampling"]; delete S.localText[f + ".sampling"];
+        if (t === "") delete p.sampling;
+        else {
+          try {
+            const v = JSON.parse(t);
+            if (!v || typeof v !== "object" || Array.isArray(v)) throw new Error("must be a JSON object");
+            p.sampling = v;
+          } catch (err) {
+            S.local[f + ".sampling"] = "invalid JSON: " + err.message;
+            S.localText[f + ".sampling"] = e.target.value;
+          }
+        }
+        touched(); render();
+      } });
+    samp.value = S.localText[f + ".sampling"] ?? (p.sampling === undefined ? "" : JSON.stringify(p.sampling));
+    pt.append(h("tr", {},
+      h("td", { class: "name" }, withErr(f, nameIn)),
+      h("td", { style: "min-width:230px" }, selectInput(S.models, p.model, (v) => setOrDelete(p, "model", v), f + ".model", "(choose)")),
+      h("td", {}, selectInput(["win", "explore"], p.style, (v) => setOrDelete(p, "style", v), f + ".style", "(choose)")),
+      h("td", { style: "width:95px" }, numInput(p, "interval_ms", f + ".interval_ms", "≥250")),
+      h("td", { style: "width:95px" }, numInput(p, "max_tokens", f + ".max_tokens", "≥1")),
+      h("td", {}, withErr(f + ".sampling", samp)),
+      h("td", { style: "min-width:160px" }, textArea(p, "notes", f + ".notes")),
+      h("td", {}, h("button", { class: "danger", disabled: ro(), title: "delete profile",
+        onclick: () => { delete profiles[name]; touched(); render(); } }, "✕"))));
+  }
+
+  // Model limits
+  const mt = $("models");
+  mt.replaceChildren(h("tr", {}, ["model", "min_interval_ms", "max_concurrent_lanes", "notes", ""].map((t) => h("th", {}, t))));
+  for (const id of Object.keys(models)) {
+    const m = models[id] && typeof models[id] === "object" ? models[id] : (models[id] = {});
+    const f = "models." + id;
+    const known = !S.models.length || S.models.includes(id);
+    mt.append(h("tr", {},
+      h("td", { class: "name" }, id, known ? null : h("span", { class: "unknown" }, "not in models.json"),
+        S.errors[f] ? h("div", { class: "err-msg" }, S.errors[f]) : null),
+      h("td", { style: "width:170px" }, numInput(m, "min_interval_ms", f + ".min_interval_ms", "≥0")),
+      h("td", { style: "width:170px" }, numInput(m, "max_concurrent_lanes", f + ".max_concurrent_lanes", "no cap (≥1)")),
+      h("td", { style: "min-width:200px" }, textArea(m, "notes", f + ".notes")),
+      h("td", {}, h("button", { class: "danger", disabled: ro(), title: "remove limit",
+        onclick: () => { delete models[id]; touched(); render(); } }, "✕"))));
+  }
+  const free = S.models.filter((id) => !(id in models));
+  $("newModel").replaceChildren(...free.map((id) => h("option", { value: id }, id)));
+  $("newModel").disabled = ro() || !free.length;
+  $("btnAddModel").disabled = ro() || !free.length;
+
+  // Games: every known game, plus any configured game not in games.toml.
+  const gnames = [...S.games, ...Object.keys(games).filter((g) => !S.games.includes(g))];
+  $("games").replaceChildren(...gnames.map((name) => {
+    const f = "games." + name;
+    const g = games[name] && typeof games[name] === "object" ? games[name] : {};
+    // Edits go to a scratch object that is attached to cfg only once it has a field.
+    const commit = () => {
+      if (Object.keys(g).length) games[name] = g; else delete games[name];
+    };
+    const wrap = (node) => { node.addEventListener("change", () => { commit(); touched(); markSet(); }); return node; };
+    const card = h("div", { class: "game" });
+    const markSet = () => card.classList.toggle("set", name in games);
+    const keys = h("input", { type: "text", placeholder: "comma separated: hjkl, <Esc>, <Space>",
+      value: Array.isArray(g.keys) ? g.keys.join(", ") : (g.keys ?? ""),
+      onchange: (e) => {
+        const ks = e.target.value.split(",").map((s) => s.trim()).filter(Boolean);
+        setOrDelete(g, "keys", ks.length ? ks : "");
+      } });
+    card.append(
+      h("h3", {}, h("span", {}, name), S.games.length && !S.games.includes(name) ? h("span", { class: "unknown" }, "not in games.toml") : null),
+      S.errors[f] ? h("div", { class: "err-msg" }, S.errors[f]) : "",
+      h("label", {}, "profile"), ...selectInput(pnames, g.profile, (v) => setOrDelete(g, "profile", v), f + ".profile", "(default)").map(wrap),
+      h("label", {}, "prompt file (in lane/prompts)"), ...withErr(f + ".prompt", wrap(h("input", { type: "text", value: g.prompt ?? "", placeholder: "e.g. greed.md",
+        onchange: (e) => setOrDelete(g, "prompt", e.target.value) }))),
+      h("label", {}, "keys"), ...withErr(f + ".keys", wrap(keys)),
+      h("label", {}, "goal"), ...withErr(f + ".goal", wrap(h("input", { type: "text", value: g.goal ?? "",
+        onchange: (e) => setOrDelete(g, "goal", e.target.value) }))),
+      h("label", {}, "interval_ms"), ...withErr(f + ".interval_ms", wrap(h("input", { type: "text", inputmode: "numeric",
+        value: g.interval_ms ?? "", placeholder: "profile's",
+        onchange: (e) => setOrDelete(g, "interval_ms", intOrRaw(e.target.value)) }))));
+    markSet();
+    return card;
+  }));
+
+  for (const id of ["newProfile", "btnAddProfile"]) $(id).disabled = ro();
+}
+
+function renameProfile(from, to) {
+  const profiles = S.cfg.profiles;
+  if (!to || to === from) { render(); return; }
+  if (to in profiles) { banner("bad", `A profile named "${to}" already exists.`); render(); return; }
+  // Rebuild to keep the order, then follow the references.
+  const next = {};
+  for (const [k, v] of Object.entries(profiles)) next[k === from ? to : k] = v;
+  S.cfg.profiles = next;
+  if (S.cfg.defaults && S.cfg.defaults.profile === from) S.cfg.defaults.profile = to;
+  for (const g of Object.values(S.cfg.games || {})) if (g && g.profile === from) g.profile = to;
+  touched(); render();
+}
+
+function touched() {
+  const dirty = S.cfg && JSON.stringify(S.cfg) !== S.saved;
+  $("dirty").textContent = dirty ? "● unsaved changes" : "";
+  if (S.raw) $("raw").value = JSON.stringify(S.cfg, null, 2);
+}
+
+function banner(kind, msg, list, append) {
+  const b = h("div", { class: "banner " + kind }, msg);
+  if (list && list.length) b.append(h("ul", {}, list.map((e) => h("li", {}, h("code", {}, e.field || "(file)"), " ", e.error))));
+  if (append) $("banners").append(b); else $("banners").replaceChildren(b);
+}
+
+// Warnings (unknown fields, missing prompt files) do not block a save.
+function warnings(list) {
+  if (list && list.length) banner("info", "Warnings (saved anyway):", list, true);
+}
+
+function meta() {
+  $("meta").textContent = S.disabled ? "editor disabled" :
+    `${S.path}  ·  etag ${S.etag}  ·  ${S.writable ? "writable" : "READ-ONLY"}`;
+  $("btnSave").disabled = !S.writable || S.disabled;
+}
+
+async function load(quiet) {
+  let r, j;
+  try {
+    r = await fetch("api/agents", { cache: "no-store" });
+    j = await r.json();
+  } catch (err) {
+    S.disabled = true; meta();
+    banner("bad", r && r.status === 404
+      ? "The agents editor is disabled: start the scoreboard with -agents-config PATH."
+      : "Could not load /api/agents: " + err.message);
+    return;
+  }
+  if (!r.ok) { banner("bad", j.error || ("HTTP " + r.status)); return; }
+  Object.assign(S, { etag: j.etag, models: j.models || [], games: j.games || [], writable: !!j.writable,
+    path: j.path, errors: {}, local: {}, localText: {}, disabled: false });
+  meta();
+  if (j.parse_error) {
+    S.cfg = null; S.saved = "";
+    setRaw(true); $("raw").value = j.raw || "";
+    banner("bad", "The file is not valid JSON (" + j.parse_error + "). Fix it in the raw view, Apply, then Save.");
+    return;
+  }
+  S.cfg = j.config; S.saved = JSON.stringify(S.cfg);
+  render(); touched();
+  if (S.raw) $("raw").value = JSON.stringify(S.cfg, null, 2);
+  const notes = [];
+  if (!j.exists) notes.push("The file does not exist yet; Save creates it.");
+  if (!S.writable) notes.push("Read-only: the scoreboard listens on a non-loopback address. Restart it with -agents-writable to allow saving.");
+  if (notes.length) banner("info", notes.join(" "));
+  else if (!quiet) $("banners").replaceChildren();
+  // Problems in the file as it is on disk.
+  if (j.errors && j.errors.length) {
+    for (const e of j.errors) S.errors[e.field.replace(/\[\d+\]$/, "")] = e.error;
+    render();
+    banner("bad", "The file on disk does not pass validation:", j.errors, true);
+  }
+  warnings(j.warnings);
+}
+
+async function save() {
+  if (S.raw && !applyRaw()) return;
+  if (Object.keys(S.local).length) {
+    banner("bad", "Fix the highlighted fields first.", Object.entries(S.local).map(([field, error]) => ({ field, error })));
+    return;
+  }
+  $("btnSave").disabled = true;
+  try {
+    const r = await fetch("api/agents", { method: "PUT", body: JSON.stringify(S.cfg),
+      headers: { "Content-Type": "application/json", "If-Match": S.etag } });
+    const j = await r.json().catch(() => ({}));
+    S.errors = {};
+    if (r.ok) {
+      S.etag = j.etag; S.saved = JSON.stringify(S.cfg); meta(); touched(); render();
+      banner("ok", "Saved " + j.path + " (previous version in " + j.path + ".bak).");
+      warnings(j.warnings);
+    } else if (r.status === 409) {
+      banner("bad", "Conflict: the file changed on disk since you loaded it. Copy anything you need from the raw view, then Reload.");
+    } else if (r.status === 400 && j.errors) {
+      // "games.x.keys[1]" highlights the keys input.
+      for (const e of j.errors) S.errors[e.field.replace(/\[\d+\]$/, "")] = e.error;
+      render();
+      banner("bad", j.error, j.errors);
+      warnings(j.warnings);
+    } else {
+      banner("bad", j.error || ("HTTP " + r.status));
+    }
+  } catch (err) {
+    banner("bad", "Save failed: " + err.message);
+  } finally { meta(); }
+}
+
+function setRaw(on) {
+  S.raw = on;
+  $("rawView").hidden = !on;
+  $("form").hidden = on;
+  $("btnView").textContent = on ? "Form" : "Raw JSON";
+  $("raw").readOnly = ro();
+  $("btnApplyRaw").disabled = ro();
+  if (on && S.cfg) $("raw").value = JSON.stringify(S.cfg, null, 2);
+}
+
+function applyRaw() {
+  try {
+    const v = JSON.parse($("raw").value);
+    if (!v || typeof v !== "object" || Array.isArray(v)) throw new Error("the config must be a JSON object");
+    S.cfg = v; S.local = {}; S.localText = {};
+    $("rawMsg").textContent = "applied";
+    render(); touched();
+    return true;
+  } catch (err) {
+    $("rawMsg").textContent = "";
+    banner("bad", "Raw JSON: " + err.message);
+    return false;
+  }
+}
+
+$("btnSave").onclick = save;
+$("btnReload").onclick = () => {
+  if (JSON.stringify(S.cfg) !== S.saved && !confirm("Discard unsaved changes?")) return;
+  load();
+};
+$("btnView").onclick = () => {
+  if (S.raw) { if (!applyRaw()) return; setRaw(false); render(); }
+  else setRaw(true);
+};
+$("btnApplyRaw").onclick = applyRaw;
+$("btnAddProfile").onclick = () => {
+  const name = $("newProfile").value.trim();
+  if (!name) return;
+  const profiles = obj(S.cfg, "profiles");
+  if (name in profiles) { banner("bad", `A profile named "${name}" already exists.`); return; }
+  profiles[name] = { model: S.models[0] || "", style: "win", interval_ms: 1000 };
+  if (!S.cfg.defaults || !S.cfg.defaults.profile) obj(S.cfg, "defaults").profile = name;
+  $("newProfile").value = "";
+  touched(); render();
+};
+$("btnAddModel").onclick = () => {
+  const id = $("newModel").value;
+  if (!id) return;
+  obj(S.cfg, "models")[id] = { min_interval_ms: 0 };
+  touched(); render();
+};
+addEventListener("beforeunload", (e) => {
+  if (S.cfg && JSON.stringify(S.cfg) !== S.saved) e.preventDefault();
+});
+addEventListener("keydown", (e) => {
+  if ((e.metaKey || e.ctrlKey) && e.key === "s") { e.preventDefault(); if (S.writable) save(); }
+});
+load();
+</script>
+</body>
+</html>

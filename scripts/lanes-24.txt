@@ -1,0 +1,33 @@
+# 24 lanes, the default for host-up.sh: release builds, no faults. 23 Workers AI + 1 local.
+#   l-001..l-012  the 12-lane set (scripts/lanes-12.txt): 6 qwen3 + 6 GLM-4.7-Flash
+#   l-013..l-023  11 more Workers AI lanes: 4 DeepSeek (its max_concurrent_lanes), 2 GLM-5.3,
+#                 2 qwen3, 3 GLM-4.7-Flash; the thinking models on the turn-based games
+#   lane 24       1 local LLM (Gemma in LM Studio on the Mac), on turn-based Greed
+# Profiles are in lane/agents.json. The Claude profiles (opus-fast, haiku) stay defined
+# but unused until the broker has a working Anthropic credential (D-041).
+#   scripts/host-up.sh --live --one-page          (24 lanes is the default)
+# id      game         fault  seed  agent
+l-001     frotz-zork1  none   201   @cf/qwen/qwen3-30b-a3b-fp8
+l-002     frotz-zork1  none   202   @cf/zai-org/glm-4.7-flash
+l-003     brogue-rel   none   203   @cf/zai-org/glm-4.7-flash
+l-004     brogue-rel   none   204   @cf/qwen/qwen3-30b-a3b-fp8
+l-005     greed        none   205   @cf/qwen/qwen3-30b-a3b-fp8
+l-006     greed        none   206   @cf/zai-org/glm-4.7-flash
+l-007     nsnake-rel   none   207   @cf/zai-org/glm-4.7-flash
+l-008     nsnake-rel   none   208   @cf/qwen/qwen3-30b-a3b-fp8
+l-009     pacman-rel   none   209   @cf/qwen/qwen3-30b-a3b-fp8
+l-010     pacman-rel   none   210   @cf/zai-org/glm-4.7-flash
+l-011     dcss         none   211   @cf/zai-org/glm-4.7-flash
+l-012     bastet-rel   none   212   @cf/qwen/qwen3-30b-a3b-fp8
+l-013     frotz-zork1  none   213   thinker
+l-014     brogue-rel   none   214   thinker
+l-015     greed        none   215   thinker
+l-016     nsnake-rel   none   216   fast
+l-017     pacman-rel   none   217   glm-flash
+l-018     dcss         none   218   thinker
+l-019     frotz-zork1  none   219   glm53
+l-020     brogue-rel   none   220   glm-flash
+l-021     dcss         none   221   glm53
+l-022     pacman-rel   none   222   fast
+l-023     bastet-rel   none   223   glm-flash
+l-024     greed        none   224   local

@@ -3,6 +3,8 @@
 #
 #   scripts/host-down.sh [--dry-run] [--keep-scoreboard]
 #
+# Also stops the browser wall if host-up.sh --web-wall started it (scripts/wall-web.sh stop).
+#
 # 1. saves the final /api/state to .build/host/state-final.json (through the forward);
 # 2. stops each lane's scripts/lane.sh with SIGTERM, so the harness sends lane_end;
 # 3. stops the local `min` clients host-up left running (net forward, session run);
@@ -64,3 +66,6 @@ else
     run min session destroy -f "$SB" || true
     [ "$DRY" = 1 ] || rm -f "$STATE/sessions.txt"
 fi
+
+# Browser wall (host-up.sh --web-wall, D-039): stops only what scripts/wall-web.sh started.
+[ -d "$ROOT/.build/wall-web" ] && run "$ROOT/scripts/wall-web.sh" stop || true

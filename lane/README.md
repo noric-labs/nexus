@@ -9,6 +9,7 @@ model config, the driver, a mock inference server, and the `nexus-lane` Minimal 
 | `models.json` | pi provider `nexus` → broker route `/workers-ai/v1`, the 4 Workers AI models |
 | `agent.sh` | lane entry point: env defaults, renders `models.json`, execs `agent.py` |
 | `agent.py` | RPC driver: starts pi, sends the goal prompt, re-prompts when a run settles, backs off on errors, restarts pi |
+| `agents.json` | agent config (D-040): profiles (model, style, interval), per-model pacing and lane caps, per-game profile/prompt/keys/goal. Validate with `tools/agents_check.py`; `scripts/host-up.sh` resolves it into each lane's `lane.env` |
 | `prompts/` | `system.md` plus one goal prompt per `NEXUS_GAME` (`default.md` otherwise) |
 | `mock_openai.py` | OpenAI-compatible mock that answers with `send_keys`/`screen` tool calls |
 | `toolfix.py` | local proxy between pi and the broker that turns text-encoded tool calls into `tool_calls` (D-016) |
@@ -63,7 +64,13 @@ for the harness to forward. pi's stderr goes to `$NEXUS_OUT/agent/pi.stderr.log`
 | --- | --- | --- |
 | `NEXUS_MODEL` | `@cf/qwen/qwen3-30b-a3b-fp8` | one of the 4 ids in `models.json` |
 | `NEXUS_GAME` | – | picks `prompts/<game>.md`, else the name without `-rel`, else `default.md` |
-| `NEXUS_PLAY_STYLE` | `explore` | `explore`: `prompts/system.md`, odd input welcome (bug hunting); `win`: `prompts/system-win.md`, play for progress (`host-up.sh --no-faults`) |
+| `NEXUS_PLAY_STYLE` | `explore` | `explore`: `prompts/system.md`, odd input welcome (bug hunting); `win`: `prompts/system-win.md`, play for progress (host-up: the profile's `style`, or `--play-style`) |
+| `NEXUS_PROFILE` | – | the `agents.json` profile name (logged only) |
+| `NEXUS_PROMPT_FILE` | – | goal prompt file under `prompts/` (`agents.json` `games[g].prompt`); else the game's prompt as above |
+| `NEXUS_GOAL` | – | appended to the goal prompt as "Goal for this lane: …" (`games[g].goal`) |
+| `NEXUS_ALLOWED_KEYS` | any key | JSON list (`games[g].keys`): `send_keys` rejects any other key. `"<Esc>"` = that named key, `"hjkl"` = each character |
+| `NEXUS_MODEL_MAX_TOKENS` | the model's `maxTokens` | per-response output cap, written into the rendered `models.json` (profile `max_tokens`) |
+| `NEXUS_SAMPLING` | – | JSON deep-merged over the model's `samplingParams` (profile `sampling`) |
 | `NEXUS_OUT` | `/out` (`/home/out` in the loadout) | artifacts |
 | `NEXUS_INFERENCE_URL` | `http://100.64.255.254:8899/workers-ai/v1` | OpenAI-compatible base URL |
 | `NEXUS_ACTION_INTERVAL_MS` | `1000` | minimum gap between `send_keys` calls |

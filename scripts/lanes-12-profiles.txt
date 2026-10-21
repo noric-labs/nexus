@@ -1,0 +1,19 @@
+# 12 lanes driven by lane/agents.json profiles (D-040), no faults. The 5th column is
+# `profile:<name>`, a bare profile name, or a model id; empty = games[game].profile, else
+# defaults.profile. Zork and DCSS default to `thinker` (DeepSeek, paced at 7 s); 3 DeepSeek
+# lanes stay under its ~36 req/min account limit. Check before starting:
+#   tools/agents_check.py --lanes scripts/lanes-12-profiles.txt --plan
+#   scripts/host-up.sh --live --no-faults --one-page -n 12 --lanes scripts/lanes-12-profiles.txt
+# id      game         fault  seed  agent
+l-001     frotz-zork1  none   201
+l-002     frotz-zork1  none   202   profile:glm53
+l-003     brogue-rel   none   203
+l-004     brogue-rel   none   204   profile:glm-flash
+l-005     greed        none   205   fast
+l-006     greed        none   206   profile:thinker
+l-007     nsnake-rel   none   207
+l-008     nsnake-rel   none   208   glm-flash
+l-009     pacman-rel   none   209
+l-010     pacman-rel   none   210   profile:glm-flash
+l-011     dcss         none   211
+l-012     bastet-rel   none   212   profile:fast

@@ -1,4 +1,4 @@
-// Procedural car sprites. A car is a small palette pattern facing +x; it is
+// Procedural ship sprites. A ship is a small palette pattern facing +x; it is
 // pre-rotated into DIRS directions by nearest-neighbour inverse mapping, so
 // every rotated sprite is still made of whole logical pixels.
 
@@ -6,23 +6,25 @@ import { newCanvas } from "./font.js";
 
 export const DIRS = 32;
 
-// B body, D body shade, A accent (game), W cockpit, K tyre, Y light, S wing
+// Anti-grav ships, nose at +x. B hull, D hull shade, A accent (game),
+// W canopy, E engine glow, S fin.
 const SMALL = [
-  ".KK..KK.",
-  "DBBBWBBY",
-  "SAAAWAAB",
-  "DBBBWBBY",
-  ".KK..KK.",
+  "EDDB.....",
+  ".BBAABW..",
+  "SSAAAAWWB",
+  ".BBAABW..",
+  "EDDB.....",
 ];
 const BIG = [
-  "..KKK....KKK..",
-  "S.DBBBBBBBBB..",
-  "SDBBAAWWBBBBBY",
-  "SBAAAAWWAAAAAB",
-  "SDBBAAWWBBBBBY",
-  "S.DBBBBBBBBB..",
-  "..KKK....KKK..",
+  "EDDDBB........",
+  "EBBBBBAA......",
+  ".SDBBAAAAWW...",
+  "SSBAAAAAAWWWBB",
+  ".SDBBAAAAWW...",
+  "EBBBBBAA......",
+  "EDDDBB........",
 ];
+const GLOW = ["#00f0ff", "#eef6ff"];
 
 function shade(hex, f) {
   const n = parseInt(hex.slice(1), 16);
@@ -33,14 +35,14 @@ function shade(hex, f) {
 const cache = new Map();
 
 /** Returns {img, n} where img is an n x n canvas centred on the car. */
-export function carSprite(big, body, accent, dir) {
+export function carSprite(big, body, accent, dir, glow = 0) {
   dir = ((dir % DIRS) + DIRS) % DIRS;
-  const key = `${big ? 1 : 0}|${body}|${accent}|${dir}`;
+  const key = `${big ? 1 : 0}|${body}|${accent}|${dir}|${glow}`;
   let s = cache.get(key);
   if (s) return s;
   const pat = big ? BIG : SMALL;
   const ph = pat.length, pw = pat[0].length;
-  const pal = { B: body, D: shade(body, 0.7), A: accent, W: "#1d2b53", K: "#111118", Y: "#fff6a0", S: shade(body, 0.45) };
+  const pal = { B: body, D: shade(body, 0.6), A: accent, W: "#9ff8ff", E: glow < 0 ? "#2a3050" : GLOW[glow & 1], S: shade(body, 0.4) };
   const n = Math.ceil(Math.hypot(pw, ph)) + 1;
   const img = newCanvas(n, n);
   const g = img.getContext("2d");
@@ -63,9 +65,10 @@ export function carSprite(big, body, accent, dir) {
 
 export function dirOf(ang) { return Math.round((ang / (Math.PI * 2)) * DIRS); }
 
-/** Draw a car centred at (x, y). scale is an integer magnification. */
-export function drawCar(ctx, x, y, ang, big, body, accent, scale = 1) {
-  const s = carSprite(big, body, accent, dirOf(ang));
+/** Draw a ship centred at (x, y). scale is an integer magnification; glow picks
+ *  the engine flicker frame (0/1), or -1 for a dead engine. */
+export function drawCar(ctx, x, y, ang, big, body, accent, scale = 1, glow = 0) {
+  const s = carSprite(big, body, accent, dirOf(ang), glow);
   const n = s.n * scale;
   ctx.drawImage(s.img, 0, 0, s.n, s.n, Math.round(x - n / 2), Math.round(y - n / 2), n, n);
   return s;

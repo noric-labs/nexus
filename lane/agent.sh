@@ -61,11 +61,24 @@ if [ "$NEXUS_TOOLFIX" = 1 ]; then
 fi
 export PI_BASE_URL
 
-# models.json has no env interpolation for baseUrl, so render it per lane.
+# models.json has no env interpolation for baseUrl, so render it per lane. The lane's
+# profile (lane/agents.json, D-040) may also set NEXUS_SAMPLING (JSON, merged over the
+# model's samplingParams) and NEXUS_MODEL_MAX_TOKENS (the model's maxTokens).
 python3 - "$LANE_DIR/models.json" "$PI_CODING_AGENT_DIR/models.json" <<'PY'
 import json, os, sys
+def merge(a, b):
+    for k, v in b.items():
+        a[k] = merge(dict(a.get(k) or {}), v) if isinstance(v, dict) and isinstance(a.get(k), dict) else v
+    return a
 d = json.load(open(sys.argv[1]))
 d["providers"]["nexus"]["baseUrl"] = os.environ["PI_BASE_URL"].rstrip("/")
+for m in d["providers"]["nexus"]["models"]:
+    if m["id"] != os.environ.get("NEXUS_MODEL"):
+        continue
+    if os.environ.get("NEXUS_SAMPLING"):
+        m["samplingParams"] = merge(m.get("samplingParams") or {}, json.loads(os.environ["NEXUS_SAMPLING"]))
+    if os.environ.get("NEXUS_MODEL_MAX_TOKENS"):
+        m["maxTokens"] = int(os.environ["NEXUS_MODEL_MAX_TOKENS"])
 json.dump(d, open(sys.argv[2], "w"), indent=1)
 PY
 

@@ -210,6 +210,81 @@
           "samplingParams": {
             "reasoning_effort": "low"
           }
+        },
+        {
+          "id": "claude-opus-5-5",
+          "name": "Claude Opus 5.5, fast mode (via broker /anthropic)",
+          "api": "anthropic-messages",
+          "baseUrl": "http://100.64.255.254:8899/anthropic",
+          "reasoning": false,
+          "input": [
+            "text"
+          ],
+          "contextWindow": 200000,
+          "maxTokens": 4096,
+          "cost": {
+            "input": 8,
+            "output": 40,
+            "cacheRead": 0.4,
+            "cacheWrite": 10
+          },
+          "headers": {
+            "anthropic-beta": "fast-mode-2026-02-01"
+          },
+          "samplingParams": {
+            "speed": "fast",
+            "output_config": {
+              "effort": "low"
+            }
+          }
+        },
+        {
+          "id": "claude-haiku-5-5",
+          "name": "Claude Haiku 5.5 (via broker /anthropic)",
+          "api": "anthropic-messages",
+          "baseUrl": "http://100.64.255.254:8899/anthropic",
+          "reasoning": false,
+          "input": [
+            "text"
+          ],
+          "contextWindow": 200000,
+          "maxTokens": 4096,
+          "cost": {
+            "input": 0.1,
+            "output": 0.5,
+            "cacheRead": 0.01,
+            "cacheWrite": 0.125
+          },
+          "samplingParams": {
+            "output_config": {
+              "effort": "low"
+            }
+          }
+        },
+        {
+          "id": "gemma-4-26b-a4b-it-qat-mlx",
+          "name": "Gemma 4 26B-A4B QAT MLX (LM Studio on the host)",
+          "api": "openai-completions",
+          "baseUrl": "http://100.64.255.254:1234/v1",
+          "reasoning": false,
+          "input": [
+            "text"
+          ],
+          "contextWindow": 32768,
+          "maxTokens": 4096,
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0
+          },
+          "compat": {
+            "supportsStore": false,
+            "supportsDeveloperRole": false,
+            "supportsStrictMode": true,
+            "supportsLongCacheRetention": false,
+            "sendSessionAffinityHeaders": true
+          }
         }
       ]
     }

@@ -15,7 +15,7 @@ go vet ./... && go test ./...
 ```
 
 Flags: `-config`, `-listen`, `-db`, `-heat`, `-pit`, `-lap-points`. A flag overrides the
-matching config value.
+matching config value. The agents editor flags are described in its own section below.
 
 Smoke test:
 
@@ -65,7 +65,10 @@ and `POST /wall/focus`.
   100x34 for Brogue), the config card, the failure log with replay bundle paths, and a
   "focus on wall" button.
 - Sound effects are chiptune, synthesised with WebAudio. They are muted by default.
-- Keys: `1`-`4` switch tabs, `A` cycles the tabs automatically, `M` toggles sound, `F` sends
+- The soundtrack is generative drum & bass (`web/js/music.js`, 172 BPM), synthesised live with
+  no audio files. Each heat gets its own song, seeded by the heat id, and it builds with the race.
+- Keys: `1`-`4` switch tabs, `A` cycles the tabs automatically, `M` toggles all sound
+  (effects and music), `B` toggles the music only, `F` sends
   the open lane to the wall, `N`/`P` move to the next or previous lane, and `Esc` closes the
   panel.
 - The bitmap font (`web/js/font.js`) was drawn for this project. It is not a third-party font
@@ -83,6 +86,52 @@ node tools/smoke_ui.mjs --url http://localhost:8088 --png /tmp/shots --wait-pit
 canvas that rejects any 2D call outside the set above, an SSE client and a stub
 AudioContext. It clicks a car, focuses the wall, switches tabs, waits through a pit, fails on
 any JS error, and writes PNG screenshots.
+
+## Agents editor (`/agents`)
+
+A form editor for the lane agent config `lane/agents.json` (profiles, model limits and
+per-game overrides). It is off unless `-agents-config` is given:
+
+```sh
+go build -o ../.build/scoreboard-dev .
+../.build/scoreboard-dev -listen 127.0.0.1:8088 -heat 60s -pit 12s \
+  -agents-config ../lane/agents.json -models ../lane/models.json -games ../harness/games.toml
+open http://127.0.0.1:8088/agents
+```
+
+- Flags: `-agents-config PATH` enables it. `-models` (pi `models.json`) and `-games`
+  (`games.toml`) are optional: they fill the dropdowns and make unknown model ids or game
+  names an error. `-agents-writable` allows saving on a non-loopback listen address.
+- Saving is allowed only when the scoreboard listens on loopback (`127.0.0.1`, `::1`,
+  `localhost`) or with `-agents-writable`. Otherwise the page is read-only and PUT returns 403.
+  The default `:8080` is not loopback.
+- `GET /api/agents` returns `{config, models, games, path, etag, exists, writable}`. A missing
+  file comes back as an empty skeleton with etag `"absent"`. A file that is not valid JSON
+  comes back with `parse_error` and `raw`.
+- `PUT /api/agents` takes the whole config with `If-Match: <etag>`. Responses: 200 `{etag}`,
+  400 `{error, errors:[{field, error}]}`, 409 when the file changed since that etag, 428 without
+  `If-Match`, 403 when read-only. The write goes to a temp file and is renamed into place. The
+  previous content is kept in `agents.json.bak`, and the file mode is preserved.
+- Validation follows the lane runtime's rules. A save with errors is refused:
+  - `version` is 1.
+  - `defaults.profile` and every `games.*.profile` name an existing profile.
+  - Each profile needs `model`, `style` (`win`|`explore`) and an integer `interval_ms >= 250`.
+    `max_tokens` is `>= 1` and `sampling` is an object.
+  - `models.*.min_interval_ms` is `>= 0`, `max_concurrent_lanes` is `>= 1`, and `notes` is a string.
+  - `games.*.interval_ms` is `>= 250`. `prompt` is a plain file name in `lane/prompts`, with no
+    directories and no leading dot. `keys` is an array of strings in `lane/game.ts` notation
+    (`"hjkl"`, `"<Esc>"`, `"<Space>"`, `"<C-x>"`, `"<F1>"`, and `<lt>` for a literal `<`). An
+    unknown `<Name>` is an error.
+  - Warnings don't block a save. Unknown fields get a warning and are kept. So does a prompt
+    file missing from `prompts/` next to the config file. GET also reports the errors and
+    warnings for the file as it is on disk.
+- The file is written with the key order the page sends, which is the file's own order, so a
+  one-field edit is a one-line diff.
+- The page is self-contained `web/agents.html` (inline CSS and JS, no external URLs). The race UI
+  does not link to it.
+- In a Minimal session the scoreboard edits the copy in its own box, not your checkout or the
+  lanes. Run the editor with the dev binary on the Mac against the checkout's
+  `lane/agents.json`, and let `host-up.sh` take the file to the lanes.
 
 ## API notes beyond the contract
 

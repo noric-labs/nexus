@@ -19,7 +19,7 @@ bugs.
 1. The race UI in a real browser (WebAudio, SSE reconnect), and the wall on the real display.
 2. Several VMs (`host-up.sh --vms K`).
 
-The authoritative history is [docs/DECISIONS.md](docs/DECISIONS.md) (D-001..D-037). The
+The authoritative history is [docs/DECISIONS.md](docs/DECISIONS.md) (D-001..D-041). The
 interfaces are in [docs/CONTRACTS.md](docs/CONTRACTS.md), and the plan and milestone status
 in [docs/PLAN.md](docs/PLAN.md). The research doc is at
 https://claude.ai/code/artifact/b10bce23-195d-4e31-8c3d-0b65f2d6ed4a.
@@ -82,12 +82,47 @@ min session exec l-001 'exec python3 /workbench/lane/ttyview.py'
 scripts/host-down.sh                       # tear down
 ```
 
+**Wall in a browser (D-039):** run `scripts/host-up.sh --web-wall`, or
+`scripts/wall-web.sh start` after `wall-gen`. Either one starts `nexus-wall` headless and
+serves it with `zellij web` on 127.0.0.1:8082. It prints `http://127.0.0.1:8082/nexus-wall`
+and a **read-only** token once. Paste the token at the browser's login prompt.
+- In that case, do not run the terminal kill-and-start line above. To see the wall in a
+  terminal too, use `zellij attach nexus-wall`.
+- `scripts/wall-web.sh token` makes another token, and `status` shows the server and the
+  tokens.
+- `scripts/wall-web.sh stop`, which `host-down.sh` also runs, revokes the tokens and stops
+  only what `start` started.
+- The token is never written to disk. Do not paste it into the repo.
+
 **In one box (from a Minimal session):**
 - `min task run slice` runs the local slice.
 - The scenario tasks are `slice-faults`, `slice-new` and `slice-dcss`, plus the LIVE ones
   `slice-toolfix` and `slice-mixed`. Output goes to `.build/slice-*/`.
 - Race UI demo: `scoreboard -heat 60s -pit 10s` plus `python3 scoreboard/tools/fake_lanes.py`.
 - Probe: `cd scaletest && uv run python -m probe.cli --help`. `--live` spends real credit.
+
+## Agent configuration (D-040)
+
+`lane/agents.json` sets each lane's agent:
+- **Profiles:** model, style and action interval.
+- **Per model:** a minimum interval and a lane cap (rate limits).
+- **Per game:** the default profile, prompt file, allowed keys and goal.
+
+Lanes files may name a profile in the 5th column (`profile:thinker` or `thinker`). Model
+ids still work there.
+
+```sh
+python3 tools/agents_check.py                       # validate; exit 1 with one line per error
+scripts/host-up.sh --print-plan -n 12 --lanes scripts/lanes-12-profiles.txt   # resolved table, starts nothing
+scripts/host-up.sh --live --no-faults --one-page -n 12 --lanes scripts/lanes-12-profiles.txt
+python3 tools/test_agents_check.py                  # validator + resolution tests
+```
+
+- `host-up.sh` stops if the file is invalid.
+- If more lanes use a model than its `max_concurrent_lanes`, host-up warns and continues.
+- `--play-style` now overrides the profiles. Without it, lanes take their profile's style
+  (all seed profiles are `win`). Before D-040 the default was `explore` unless
+  `--no-faults` was given.
 
 ## Open items, in order
 

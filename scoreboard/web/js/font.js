@@ -209,6 +209,26 @@ export function textC(ctx, s, cx, y, color, scale = 1) {
   return text(ctx, s, cx - Math.floor(textWidth(s, scale) / 2), y, color, scale);
 }
 
+/** Extended face for headings: every glyph drawn at twice its width. */
+export function textWide(ctx, s, x, y, color, scale = 1) {
+  s = String(s);
+  const a = atlas(color);
+  x = Math.round(x); y = Math.round(y);
+  for (const ch of s) {
+    const i = slot(ch);
+    if (i !== 0) ctx.drawImage(a, i * CW, 0, GW, GH, x, y, GW * scale * 2, GH * scale);
+    x += CW * scale * 2;
+  }
+  return x;
+}
+
+export function wideWidth(s, scale = 1) { return [...String(s)].length * CW * scale * 2 - scale * 2; }
+
+/** Centred extended text around cx. */
+export function textWideC(ctx, s, cx, y, color, scale = 1) {
+  return textWide(ctx, s, cx - Math.floor(wideWidth(s, scale) / 2), y, color, scale);
+}
+
 /** Truncate to n chars, marking the cut with '~'. */
 export function fit(s, n) {
   s = String(s ?? "");

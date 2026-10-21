@@ -6,6 +6,149 @@ Commits are in the git history; the research is in the
 
 ## 2026-10-21
 
+### D-041 24 lanes by default: 23 Workers AI + 1 local model; Claude profiles wired but parked
+**Decision:** `host-up.sh` now starts `scripts/lanes-24.txt` with `-n 24` by default:
+- l-001..l-012: the 12-lane set (6 qwen3, 6 GLM-4.7-Flash).
+- l-013..l-023: 11 more Workers AI lanes. 4 `thinker` (DeepSeek, at its
+  `max_concurrent_lanes`) on Zork, Brogue, Greed and DCSS; 2 `glm53` on Zork and DCSS;
+  2 `fast` (qwen3) and 3 `glm-flash` on the real-time games.
+- l-024: 1 `local` (`gemma-4-26b-a4b-it-qat-mlx` in LM Studio on the Mac).
+
+The first version had 6 `opus-fast` (Claude Opus 5.5, fast mode) and 5 `haiku` (Claude
+Haiku 5.5) lanes in place of l-013..l-023. They were swapped for Workers AI because the
+broker had no working Anthropic credential (see Blocker). The profiles and models stay in
+`lane/agents.json` and `lane/models.json`.
+
+**How:** pi models may set their own `api`, `baseUrl` and `headers` (pi's models.json
+schema), so the new models stay in the `nexus` provider and bypass toolfix, which only
+fronts Workers AI:
+- Claude: `api: anthropic-messages` at the broker's `/anthropic` route
+  (`http://100.64.255.254:8899/anthropic`); the broker injects the key. Opus fast mode is the
+  `anthropic-beta: fast-mode-2026-02-01` header plus `speed: "fast"` in `samplingParams`.
+  Both models send `output_config.effort: low`. Thinking can't be disabled on Opus 5.5, so
+  `reasoning` stays false and pi sends no thinking config.
+- Local: `api: openai-completions` at `http://100.64.255.254:1234/v1`. The host alias
+  forwards to the Mac's loopback, so host_ip lanes reach LM Studio without a broker route.
+  Gemma 4 26B-A4B answers a 1K-token turn in about 1 s with native tool calls.
+  `qwen3.8-27b-mlx` was tried first and dropped: it ignores `enable_thinking: false` and
+  spent 13 s reasoning per turn, so the lane stalled.
+
+**Cost:** Opus fast mode is $8/$40 per MTok (2x standard Opus). Six lanes at about one
+action per 1-3 s with about 1-2K input tokens per action cost on the order of $100-250 an
+hour. Haiku 5.5 ($0.10/$0.50) and the local model are negligible.
+**Blocker (2026-10-21):** every `/anthropic` credential in the broker failed. The OpenRouter
+key gets 401. The Claude subscription OAuth token gets a bare `rate_limit_error` with no
+rate-limit headers: Anthropic refuses it for a third-party agent. The API key gets "credit
+balance is too low". Opus fast mode needs an API key with credit.
+**Also:** a "built with Minimal" badge in the README (`docs/assets/built-with-minimal.svg`)
+and a pixel version in the race UI's infield and pit screen.
+
+### D-040 Agent configuration file (`lane/agents.json`)
+**Problem:** a lane's model came from the lanes file, its style from a global flag, and its
+pacing from a global default. D-037 showed that the right settings depend on the game
+(DeepSeek for Zork and DCSS, qwen3 for the fast games) and on the model's rate limit
+(DeepSeek needs about 7 s per lane).
+**Decision:** a single file, `lane/agents.json`, drives every lane's agent. A web editor
+is built against this schema:
+- `defaults.profile`: the profile used when nothing else picks one.
+- `profiles.<name>`: `model` (an id in `lane/models.json`), `style` (`win` or `explore`),
+  `interval_ms` (at least 250). Optional: `max_tokens`, `sampling` (deep-merged over the
+  model's `samplingParams`), `notes`.
+- `models.<id>`: `min_interval_ms`. Optional: `max_concurrent_lanes`, `notes`.
+- `games.<name>` (names from `harness/games.toml`): all optional. `profile`; `prompt` (a
+  file under `lane/prompts/`); `keys` (the only keys `send_keys` accepts); `goal` (appended
+  to the game prompt as "Goal for this lane: …"); `interval_ms`.
+
+**Resolution per lane:** the lanes file's 5th column, then `games[game].profile`, then
+`defaults.profile`. The column takes three forms:
+- `profile:<name>`, or a bare name (one with no `/` or `@`).
+- A model id, for back-compat. That maps to the game's profile if it uses that model, else
+  the first profile that does. If no profile uses it, the game's profile is kept with the
+  model swapped in, minus the profile's `sampling` and `max_tokens`.
+
+The interval is `max(games[game].interval_ms or profile.interval_ms, models[model].min_interval_ms)`.
+`--play-style` still overrides every lane's style. Without the flag, the profile's style
+applies; before this, the default was `explore` unless `--no-faults` was given.
+
+**Keys:** an entry like `<Esc>` allows that named key. Plain text allows each of its
+characters (`"hjkl"`). A space and `<Space>` are the same key. `game.ts` rejects a batch
+that contains any other key, before pacing and before typing, and lists the allowed keys in
+the tool description.
+
+**Plumbing:** `tools/agents_check.py` validates the file with stdlib Python. It catches an
+unknown model, profile, game or named key; a bad style; an interval under 250; and a
+missing prompt file. Unknown fields only warn. `host-up.sh --agents FILE` (default
+`lane/agents.json`) runs it before anything starts, and an invalid file stops the run.
+For each lane it writes these to `lane.env`, base64-encoded so spaces and `<keys>` survive
+the remote shell: `NEXUS_PROFILE`, `NEXUS_MODEL`, `NEXUS_PLAY_STYLE`,
+`NEXUS_ACTION_INTERVAL_MS`, `NEXUS_PROMPT_FILE`, `NEXUS_ALLOWED_KEYS`, `NEXUS_GOAL`,
+`NEXUS_MODEL_MAX_TOKENS` and `NEXUS_SAMPLING`. `host-up.sh --print-plan` (or
+`agents_check.py --lanes F --plan`) prints the resolved table and starts nothing.
+
+**Rate limits:** `max_concurrent_lanes` is checked at host-up. Too many lanes on one model
+only warns, and the run continues: a short burst of 429s beats a refused race. Seed values
+are DeepSeek at 7000 ms and 4 lanes (about 34 req/min against its ~36), and GLM-5.3 at
+5000 ms and 3 lanes. GLM-5.3-Flash is set to 15000 ms and 2 lanes; it is too slow to play.
+**Also:** `scripts/lanes-12-profiles.txt` is the 12-lane set written with profiles. It has
+3 DeepSeek lanes.
+
+### D-039 Wall in the browser via zellij web
+**Problem:** the wall only existed in a fullscreen terminal on the Mac. A second screen, a
+projector or another laptop on the desk could not show it without a terminal tuned to 4 pt.
+**Decision:** use zellij 0.45's built-in web client, not a custom viewer.
+`scripts/wall-web.sh start` (or `host-up.sh --web-wall`) does three things, all under
+`ulimit -n 4096`:
+- It creates `nexus-wall` headless with
+  `zellij --config wall/config.kdl attach --create-background nexus-wall options --default-layout wall/out/wall.kdl`.
+  A running session of that name is reused.
+- It starts `zellij web --start --daemonize` on 127.0.0.1:8082. A server that is already
+  online is reused.
+- It creates a **read-only** token (`zellij web --create-read-only-token`). The token can
+  only watch existing sessions. It prints the URL `http://127.0.0.1:8082/nexus-wall` and
+  the token once.
+
+**Sharing:** a session is served only if it opts in. `wall/config.kdl` now sets
+`web_sharing "on"`. The per-session `options --web-sharing on` on `attach -b` did not take
+effect in 0.45.1 (`/session-list` showed `web_clients_allowed: false`). The config line did.
+**Secrets:** the token is a credential. It goes to the terminal only. `.build/wall-web/`
+(gitignored) holds the token *names* and flags for what `start` created. `wall-web.sh stop`
+(also run by `host-down.sh`) revokes those tokens and stops the server and session, but
+only the ones it started.
+**Verified (2026-10-21, on the Mac, with a 2-pane test layout):** `GET /` and
+`GET /<session>` return 200. `/session-list` without a login returns 401. Login with the
+read-only token returns 200, and `/session` returns `is_read_only: true`. In headless
+Chrome, the xterm buffer showed both panes updating live.
+**Gotchas:**
+- `zellij web --status` exits 0 even when the server is offline, so the script probes
+  with curl.
+- `zellij web --stop` refuses `--port`, so the port is fixed at 8082.
+- `--create-read-only-token` refuses `--token-name`.
+- The browser font defaults to 12 px. For 8x8 pages, zoom the page out (Cmd -) until the
+  grid fits.
+- `wall-pager` drives the headless session exactly as it drives the terminal one.
+
+### D-038 Race UI: neon anti-grav theme, pilot deaths, generative DnB
+**Look:** the race UI is re-themed as futurist anti-grav racing: a dark void and deck with
+neon cyan, magenta and yellow signals and a three-step blood ramp (`theme.js`). The
+pixel-art rules are unchanged: only `fillRect`, `drawImage` and `putImageData`, no smoothing,
+and an integer canvas scale. Crash is `#ff1f3a`, sanitizer `#ff2bd6`.
+**Deaths:** a crash or sanitizer report kills the pilot. The craft breaks into shards, the
+pilot is ejected and bursts into blood and gibs, and the stains stay on the deck as decals
+(capped at 600, cleared at each green flag). A banner reads PILOT TERMINATED, stacking to
+DOUBLE KILL and MULTI KILL Xn for deaths within 3 s. Outside the pit, a 2x kill-cam inset
+replays the death site, at 0.5x speed for the first 0.6 s. Hang, error exit and visual keep
+their effects, restyled in the new palette.
+**Music:** `music.js` generates a drum & bass track with WebAudio, seeded by the heat id so
+each heat has its own song (key, chord loop, drum pattern, acid riff): 172 BPM, with drums,
+sub bass, pad and an acid line. Intensity follows the phase: pad, hats and filtered sub in the
+pit, a riser into the full mix at the green flag, and an opened acid filter with extra
+percussion in the final minute. A death drops the drums for a bar under a sub boom; a lead
+change plays an acid fill.
+**Keys:** `M` toggles all sound (effects and music); `B` toggles only the music.
+**Originality:** the art, sounds and music are made for this project. There are no
+third-party logos, samples or music.
+`tools/smoke_ui.mjs` checks the banner, kill-cam, decals and music start/stop.
+
 ### D-037 Stronger models play the reasoning games; DeepSeek flash is capped at ~36 req/min
 **Memory did not help (discarded).** A `note()` notebook plus `KEEP_TURNS=10` gave sensible
 notes but no better scores on qwen3/GLM-4.7, at 2–4x the tokens per call.

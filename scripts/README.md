@@ -44,7 +44,7 @@ scoreboard, one per lane, the scoreboard forwarded to `localhost:8080`, and the 
 | File | What |
 | --- | --- |
 | `host-up.sh`, `host-down.sh` | run on the Mac, from the nexus checkout |
-| `lanes.txt` | the lanes: `id game fault seed [model]`; the session is named after the id |
+| `lanes.txt`, `lanes-*.txt` | the lanes: `id game fault seed [agent]` (a profile in `lane/agents.json` or a model id); the session is named after the id. `lanes-24.txt` is the default (D-041) |
 | `scoreboard.sh` | builds and runs the scoreboard on `0.0.0.0:8080` (the `scoreboard` task) |
 | `lane.sh` | one lane: harness + pi agent (the `lane` task) |
 

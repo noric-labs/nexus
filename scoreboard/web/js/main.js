@@ -8,6 +8,7 @@
 import { Model } from "./model.js";
 import { Race } from "./ui.js";
 import { Sfx } from "./audio.js";
+import { Music } from "./music.js";
 import { W, H } from "./theme.js";
 
 export function boot(opts = {}) {
@@ -22,7 +23,8 @@ export function boot(opts = {}) {
 
   const model = new Model();
   const sfx = new Sfx();
-  const app = { model, sfx, errors: [], stats: { state: 0, failure: 0, ticker: 0, heat: 0, pit: 0, focus: 0, screen: 0, card: 0, focusPosts: 0 } };
+  const music = new Music(sfx);
+  const app = { model, sfx, music, errors: [], stats: { state: 0, failure: 0, ticker: 0, heat: 0, pit: 0, focus: 0, screen: 0, card: 0, focusPosts: 0 } };
   const enc = encodeURIComponent;
   let screenES = null;
 
@@ -48,6 +50,8 @@ export function boot(opts = {}) {
 
   let refreshTimer = null;
   const race = new Race(model, sfx, {
+    music,
+    canvas, // the kill-cam samples the frame back out of it
     onSelect(id) {
       if (screenES) { screenES.close(); screenES = null; }
       if (!id) return;
@@ -160,7 +164,7 @@ export function boot(opts = {}) {
     try { race.render(ctx, Math.min(dt, 0.1)); } catch (err) { fail("render", err); }
   }
   raf(frame);
-  app.stop = () => { app.stopped = true; es.close(); if (screenES) screenES.close(); clearInterval(app.cardTimer); };
+  app.stop = () => { app.stopped = true; es.close(); if (screenES) screenES.close(); clearInterval(app.cardTimer); music.stop(); };
   return app;
 }
 

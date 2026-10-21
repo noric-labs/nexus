@@ -117,6 +117,25 @@ export function parseKeys(s: string): { segs: Seg[]; count: number } {
 	return { segs, count };
 }
 
+// Allowed keys (lane/agents.json games[game].keys, D-040): NEXUS_ALLOWED_KEYS is a JSON list
+// in the notation above. "<Esc>" allows that named key; plain text allows each of its
+// characters ("hjkl" = h, j, k, l). A space and <Space> are the same key. Unset = any key.
+const tokens = (segs: Seg[]): string[] =>
+	segs.flatMap((s) => ("lit" in s ? [...s.lit].map((c) => (c === " " ? "Space" : `'${c}'`)) : [s.key]));
+
+export function allowedSet(list: string[]): Set<string> {
+	return new Set(list.flatMap((e) => tokens(parseKeys(e).segs)));
+}
+
+/** The keys in segs that are not in allowed, as notation ("x", "<Escape>"), deduplicated. */
+export function disallowed(segs: Seg[], allowed: Set<string>): string[] {
+	const bad = tokens(segs).filter((t) => !allowed.has(t));
+	return [...new Set(bad)].map((t) => (t.startsWith("'") ? t.slice(1, -1) : `<${t}>`));
+}
+
+const ALLOWED_LIST: string[] = env.NEXUS_ALLOWED_KEYS ? JSON.parse(env.NEXUS_ALLOWED_KEYS) : [];
+const ALLOWED = ALLOWED_LIST.length ? allowedSet(ALLOWED_LIST) : undefined;
+
 function run(cmd: string, args: string[], timeoutMs = 5000): Promise<string> {
 	return new Promise((resolve, reject) => {
 		execFile(cmd, args, { timeout: timeoutMs, maxBuffer: 1 << 20 }, (err, stdout, stderr) => {
@@ -229,7 +248,8 @@ export default function (pi: ExtensionAPI) {
 			"Type a key sequence into the game, then return the updated screen. Batch several keys per call " +
 			"(e.g. 'jjjl' or 'open mailbox<Enter>'). Plain text is typed literally; named keys use angle " +
 			"brackets: <Enter> <Esc> <Tab> <BSpace> <Space> <Up> <Down> <Left> <Right> <Home> <End> <PgUp> " +
-			`<PgDn> <Del> <F1>..<F12> <C-x> (ctrl) <M-x> (alt) <lt> (a literal '<'). At most ${MAX_KEYS} keys per call.`,
+			`<PgDn> <Del> <F1>..<F12> <C-x> (ctrl) <M-x> (alt) <lt> (a literal '<'). At most ${MAX_KEYS} keys per call.` +
+			(ALLOWED ? ` Only these keys are allowed in this game: ${ALLOWED_LIST.join(" ")}` : ""),
 		parameters: Type.Object({
 			keys: Type.String({ description: "Key sequence, e.g. 'look<Enter>' or '<Down><Down><Enter>'" }),
 		}),
@@ -238,6 +258,8 @@ export default function (pi: ExtensionAPI) {
 			const { segs, count } = parseKeys(raw);
 			if (count === 0) throw new Error("keys is empty");
 			if (count > MAX_KEYS) throw new Error(`too many keys (${count}); send at most ${MAX_KEYS} per call`);
+			const bad = ALLOWED ? disallowed(segs, ALLOWED) : [];
+			if (bad.length) throw new Error(`keys not allowed in this game: ${bad.join(" ")}; allowed: ${ALLOWED_LIST.join(" ")}`);
 			const wait = lastAction + INTERVAL_MS - Date.now();
 			if (wait > 0) await sleep(wait);
 			lastAction = Date.now();

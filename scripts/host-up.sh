@@ -5,19 +5,29 @@
 #
 #   scripts/host-up.sh [--dry-run] [-n N] [--lanes FILE] [--live] [--heat 15m] [--pit 1m]
 #                      [--port 8080] [--network own_ip|host_ip] [--lane-network own_ip|host_ip]
-#                      [--via exec|run] [--egress open|strict] [--no-faults] [--one-page]
-#                      [--play-style explore|win]
+#                      [--via exec|run] [--egress open|strict] [--no-faults] [--one-page] [--web-wall]
+#                      [--play-style explore|win] [--agents FILE] [--print-plan]
 #
 #   --dry-run   print every command (min, uv, ...) and run none of them
 #   --no-faults every lane's fault becomes `none`: the agents play the games unencumbered
 #               (the detectors still run, so real bugs still score)
 #   --play-style explore: agents try odd commands (bug hunting, lane/prompts/system.md).
-#               win: agents play for progress (system-win.md). Default: win with --no-faults,
-#               else explore.
+#               win: agents play for progress (system-win.md). Overrides every lane; default:
+#               each lane's profile style from --agents.
+#   --agents F  agent config (default lane/agents.json, D-040): per lane profile -> model,
+#               style, action interval, prompt, allowed keys, goal. Validated by
+#               tools/agents_check.py before anything starts; errors stop host-up.
+#   --print-plan  print lane -> game, profile, model, style, interval for the first N lanes
+#               and exit (starts nothing, needs no min)
 #   --one-page  the wall shows every lane on a single tab, with no Hot tab (wall-gen --one-page);
 #               don't run wall-pager with it
-#   -n N        start the first N lanes of the lanes file (default 3)
-#   --lanes F   lanes file, "id game fault seed [model]" per line (default scripts/lanes.txt)
+#   --web-wall  also start the wall headless and serve it in a browser through `zellij web`
+#               (scripts/wall-web.sh start: http://127.0.0.1:8082/nexus-wall, read-only token
+#               printed once; D-039). host-down.sh stops it.
+#   -n N        start the first N lanes of the lanes file (default 24)
+#   --lanes F   lanes file, "id game fault seed [agent]" per line (default scripts/lanes-24.txt).
+#               agent: profile:<name>, a bare profile name, or a model id (back-compat);
+#               empty = the game's profile in --agents, else its defaults.profile
 #   --live      pi talks to Workers AI through the host broker (100.64.255.254:8899). Without it
 #               every lane runs lane/mock_openai.py in its own box: no inference egress, no spend.
 #               Only host_ip boxes reach the broker, so --live implies --lane-network host_ip.
@@ -58,11 +68,11 @@ set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 STATE=$ROOT/.build/host
-DRY=0 NOFAULTS=0 STYLE= WALL_ARGS=() N=3 LANES_FILE=$ROOT/scripts/lanes.txt LIVE=0 HEAT=15m PIT=1m PORT=8080
+DRY=0 NOFAULTS=0 STYLE= WALL_ARGS=() N=24 LANES_FILE=$ROOT/scripts/lanes-24.txt LIVE=0 HEAT=15m PIT=1m PORT=8080
 NET=own_ip LANE_NET= VIA=exec EGRESS=open
 SB=${NEXUS_SB_SESSION:-scoreboard}
 PREFIX=${NEXUS_LANE_PREFIX:-}
-MODEL=${NEXUS_MODEL:-@cf/qwen/qwen3-30b-a3b-fp8}
+AGENTS=$ROOT/lane/agents.json PLAN=0
 # Hosts the scoreboard box may reach for `go build` (module proxy + checksum DB). Add more
 # with NEXUS_SB_ALLOW_HOSTS="a b" if the build log shows another host.
 SB_HOSTS="proxy.golang.org sum.golang.org ${NEXUS_SB_ALLOW_HOSTS:-}"
@@ -72,9 +82,12 @@ while [ $# -gt 0 ]; do
         --dry-run) DRY=1 ;;
         --no-faults) NOFAULTS=1 ;;
         --one-page) WALL_ARGS+=(--one-page) ;;
+        --web-wall) WEB_WALL=1 ;;
         --play-style) STYLE=$2; shift ;;
         -n) N=$2; shift ;;
         --lanes) LANES_FILE=$2; shift ;;
+        --agents) AGENTS=$2; shift ;;
+        --print-plan) PLAN=1 ;;
         --live) LIVE=1 ;;
         --heat) HEAT=$2; shift ;;
         --pit) PIT=$2; shift ;;
@@ -134,9 +147,14 @@ box cannot reach the host broker at 100.64.255.254 (gominimal/inbox#1153, D-035)
 [ "$NET" = host_ip ] && [ "$LANE_NET" = own_ip ] && die "own_ip lanes cannot reach a host_ip scoreboard"
 case $VIA in exec|run) ;; *) die "--via must be exec or run" ;; esac
 case $EGRESS in open|strict) ;; *) die "--egress must be open or strict" ;; esac
-[ -n "$STYLE" ] || { [ "$NOFAULTS" = 1 ] && STYLE=win || STYLE=explore; }
-case $STYLE in explore|win) ;; *) die "--play-style must be explore or win" ;; esac
+case ${STYLE:-win} in explore|win) ;; *) die "--play-style must be explore or win" ;; esac
 [[ $N =~ ^[0-9]+$ ]] && [ "$N" -ge 1 ] || die "-n needs a positive number"
+# Agent config (D-040): validate lane/agents.json and resolve each lane's settings.
+AGENT_ARGS=(--agents "$AGENTS" --lanes "$LANES_FILE" -n "$N")
+[ -n "$STYLE" ] && AGENT_ARGS+=(--style "$STYLE")
+[ "$PLAN" = 1 ] && exec python3 "$ROOT/tools/agents_check.py" "${AGENT_ARGS[@]}" --plan
+AGENT_EMIT=$(python3 "$ROOT/tools/agents_check.py" "${AGENT_ARGS[@]}" --emit) \
+    || die "agent config $AGENTS or lanes file $LANES_FILE is invalid (see above)"
 if [ "$VIA" = run ] && [ "$NET" = own_ip ]; then
     die "--via run needs --network host_ip: a task in an own_ip session runs in a second box that
 the session's ingress and 'min net forward' do not reach, and on a Mac it has no outbound reach
@@ -160,16 +178,24 @@ valid() { [[ $1 =~ ^[A-Za-z0-9@/._:+-]+$ ]]; }
 LANES=()
 while read -r id game fault seed model _; do
     case $id in ''|'#'*) continue ;; esac
-    [ -n "${seed:-}" ] || die "$LANES_FILE: need 'id game fault seed [model]', got: $id $game $fault"
+    [ -n "${seed:-}" ] || die "$LANES_FILE: need 'id game fault seed [agent]', got: $id $game $fault"
     [ "$NOFAULTS" = 1 ] && fault=none
-    for v in "$id" "$game" "$fault" "$seed" "${model:-$MODEL}"; do
+    for v in "$id" "$game" "$fault" "$seed" ${model:+"$model"}; do
         valid "$v" || die "$LANES_FILE: unsafe value '$v'"
     done
     [[ $id =~ ^[a-z0-9-]+$ ]] || die "$LANES_FILE: lane id '$id' must be [a-z0-9-] (it names a session)"
-    LANES+=("$id $game $fault $seed ${model:-$MODEL}")
+    LANES+=("$id $game $fault $seed")
 done < "$LANES_FILE"
 [ "${#LANES[@]}" -ge "$N" ] || die "$LANES_FILE has ${#LANES[@]} lanes, asked for $N"
 LANES=("${LANES[@]:0:$N}")
+# Per lane, in order: base64 of its lane.env lines (NEXUS_PROFILE, NEXUS_MODEL, ...).
+AGENT_ENV=()
+while read -r eid b64; do
+    read -r id _ <<< "${LANES[${#AGENT_ENV[@]}]}"
+    [ "$eid" = "$id" ] || die "agents_check.py resolved lane '$eid' where '$id' was expected"
+    AGENT_ENV+=("$b64")
+done <<< "$AGENT_EMIT"
+[ "${#AGENT_ENV[@]}" = "${#LANES[@]}" ] || die "agents_check.py resolved ${#AGENT_ENV[@]} of ${#LANES[@]} lanes"
 
 SESSIONS=("$SB")
 for spec in "${LANES[@]}"; do read -r id _ <<< "$spec"; SESSIONS+=("$PREFIX$id"); done
@@ -282,9 +308,10 @@ if [ "$LANE_NET" = own_ip ]; then
     fi
 fi
 MOCK=$((1 - LIVE))
-first=1
+first=1 lane_i=0
 for spec in "${LANES[@]}"; do
-    read -r id game fault seed model <<< "$spec"
+    read -r id game fault seed <<< "$spec"
+    agent_b64=${AGENT_ENV[$lane_i]}; lane_i=$((lane_i + 1))
     s=$PREFIX$id
     printf '+ min session activate --name %q' "$s"; printf ' %q' "${lane_flags[@]}" "$ROOT"; echo
     if [ "$DRY" = 0 ]; then
@@ -292,8 +319,10 @@ for spec in "${LANES[@]}"; do
             || { cat "$STATE/activate-$s.log" >&2; die "activating $s failed"; }
     fi
     # Lane config for scripts/lane.sh. Written into the box because `min session run` forwards
-    # no client env, and so a restart inside the session needs no flags.
-    rexec "$s" "mkdir -p \$HOME/.nexus && printf %s\\\\n NEXUS_LANE_ID=$id NEXUS_GAME=$game NEXUS_FAULT=$fault NEXUS_SEED=$seed NEXUS_MODEL=$model NEXUS_SCOREBOARD_URL=$SB_URL NEXUS_MOCK=$MOCK NEXUS_PLAY_STYLE=$STYLE > \$HOME/.nexus/lane.env"
+    # no client env, and so a restart inside the session needs no flags. The agent settings
+    # (model, style, interval, prompt, keys, goal) are shell-quoted lines from agents_check.py,
+    # sent as base64 so spaces and <keys> survive the remote shell.
+    rexec "$s" "mkdir -p \$HOME/.nexus && printf %s\\\\n NEXUS_LANE_ID=$id NEXUS_GAME=$game NEXUS_FAULT=$fault NEXUS_SEED=$seed NEXUS_SCOREBOARD_URL=$SB_URL NEXUS_MOCK=$MOCK > \$HOME/.nexus/lane.env && python3 -c \"import base64,sys; sys.stdout.write(base64.b64decode(sys.argv[1]).decode())\" $agent_b64 >> \$HOME/.nexus/lane.env"
     if [ "$first" = 1 ] && [ "$VIA" = exec ]; then
         # The session's packages come from [session] in minimal.toml, sideload games included.
         # Sideload packages are verified in task `packages`, not yet in [session]: check once.
@@ -355,3 +384,8 @@ Wall (wall/terminals/ has Ghostty, kitty and WezTerm configs for the 4pt grid):
 
 Tear down: scripts/host-down.sh
 EOF
+# Browser wall (D-039): the same nexus-wall session, started headless and served by `zellij web`.
+# In a terminal, attach to it with `zellij attach nexus-wall` instead of the kill-and-start line above.
+if [ "${WEB_WALL:-0}" = 1 ]; then
+    run "$ROOT/scripts/wall-web.sh" start
+fi

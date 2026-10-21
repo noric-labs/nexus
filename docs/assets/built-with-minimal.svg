@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="152" height="20" role="img" aria-label="built with: Minimal">
+  <title>built with: Minimal</title>
+  <linearGradient id="s" x2="0" y2="100%"><stop offset="0" stop-color="#bbb" stop-opacity=".1"/><stop offset="1" stop-opacity=".1"/></linearGradient>
+  <clipPath id="r"><rect width="152" height="20" rx="3" fill="#fff"/></clipPath>
+  <g clip-path="url(#r)">
+    <rect width="66" height="20" fill="#555"/>
+    <rect x="66" width="86" height="20" fill="#0a0a0a"/>
+    <rect width="152" height="20" fill="url(#s)"/>
+  </g>
+  <g fill="#fff" text-anchor="middle" font-family="Verdana,Geneva,DejaVu Sans,sans-serif" font-size="11">
+    <text x="33" y="15" fill="#010101" fill-opacity=".3" textLength="54">built with</text>
+    <text x="33" y="14" textLength="54">built with</text>
+    <text x="121" y="15" fill="#010101" fill-opacity=".3" textLength="44">Minimal</text>
+    <text x="121" y="14" textLength="44">Minimal</text>
+  </g>
+  <g transform="translate(72 4) scale(0.5)" fill="#e5e5e5" fill-rule="evenodd">
+    <path d="M10.2734 0.000213623H18.1767L29.2412 16V23.9999H21.338L10.2734 8.00011V0.000213623Z
+M3.16132 23.9999L0 19.4285V11.4286H7.90326L11.0645 16V23.9999H3.16132Z
+M28.4531 0.000213623H36.3564L47.4208 16V23.9999H39.5176L28.4531 8.00011V0.000213623Z"/>
+    <path d=""/>
+    <path d=""/>
+  </g>
+</svg>

@@ -3,23 +3,27 @@
 // lane side panel. Everything is drawn on one W x H logical canvas using only
 // fillRect, drawImage and putImageData, so it scales crisply by integers.
 
-import { W, H, C, TYPE_COLOR, TYPE_SHORT, TYPES, faultColor, gameColor, gameShort, fmtPts, fmtClock, fmtTime } from "./theme.js";
-import { text, textR, textC, textWidth, fit, termChar, newCanvas, CW } from "./font.js";
+import { W, H, C, TYPE_COLOR, TYPE_SHORT, TYPES, faultColor, gameColor, gameShort, pictogram, hash, fmtPts, fmtClock, fmtTime } from "./theme.js";
+import { text, textR, textC, textWidth, textWide, textWideC, wideWidth, fit, termChar, newCanvas, CW } from "./font.js";
 import { Track } from "./track.js";
 import { drawCar, carSprite } from "./sprites.js";
 import { Fx } from "./fx.js";
 
 const TOP = 20, TICK_Y = 526, TOWER_X = 706, TOWER_W = 252;
-const TABS = [["heat", "HEAT"], ["constructors", "CONSTR"], ["games", "GAMES"], ["season", "SEASON"]];
+const TABS = [["heat", "1 HEAT"], ["constructors", "2 CONSTR"], ["games", "3 GAMES"], ["season", "4 SEASON"]];
 const PANEL = { x: 232, y: 24, w: 724, h: 498 };
 const SCR = { cw: 6, ch: 8, maxCols: 100, maxRows: 34 };
 const REPLAY_SECS = 4.5;
+const CAM = { x: 4, y: TOP + 4, w: 192, h: 108, secs: 1.5, slow: 0.6 }; // kill-cam inset, 2x zoom
+const SIGNALS = { 4: "SIGILL", 6: "SIGABRT", 7: "SIGBUS", 8: "SIGFPE", 11: "SIGSEGV" };
 
 export class Race {
   constructor(model, sfx, hooks = {}) {
     this.m = model;
     this.sfx = sfx;
     this.hooks = hooks; // onSelect(id|null), onFocus(id)
+    this.music = hooks.music || null;
+    this.screen = hooks.canvas || null; // the canvas being drawn, for the kill-cam
     this.track = new Track();
     this.fx = new Fx(11);
     this.cars = new Map();     // lane -> {d, lat}
@@ -43,6 +47,10 @@ export class Race {
     this.lastLight = 0;
     this.replay = null;
     this.frames = 0;
+    this.banner = null;        // {title, sub, t}
+    this.kills = [];           // times of recent deaths, for DOUBLE/MULTI KILL
+    this.cam = null;           // kill-cam: {x, y, t, frames: [{t, cv}]}
+    this.camPool = [];
     this.bg = newCanvas(704, H);
     const g = this.bg.getContext("2d");
     this.track.paint(g, 704, H);
@@ -60,17 +68,41 @@ export class Race {
   onFailure(f) {
     const l = this.m.applyFailure(f);
     if (!l) return;
-    this.fx.trigger(f.lane_id, f.type, f.scored ? f.points : 0);
+    this.fx.trigger(f.lane_id, f.type, f.scored ? f.points : 0, { body: faultColor(l.fault), acc: gameColor(l.game) });
     this.flash.set(f.lane_id, { type: f.type, t: this.t });
     this.sfx.play(f.type);
+    if (f.type === "crash" || f.type === "sanitizer") this.death(f);
     if (f.lane_id === this.sel && this.hooks.onRefresh) this.hooks.onRefresh(f.lane_id);
   }
+
+  death(f) {
+    this.sfx.play("crunch");
+    setTimeout(() => this.sfx.play("splat"), f.type === "sanitizer" ? 150 : 400);
+    if (this.music) this.music.hit("death");
+    this.kills = this.kills.filter(t => this.t - t < 3);
+    this.kills.push(this.t);
+    const n = this.kills.length;
+    const cause = f.type === "sanitizer" ? "ASAN" : SIGNALS[f.signal] || (f.signal ? String(f.signal).toUpperCase() : "SIGSEGV");
+    this.banner = { title: n === 1 ? "PILOT TERMINATED" : n === 2 ? "DOUBLE KILL" : `MULTI KILL X${n}`, sub: `${f.lane_id}  ${cause}`, t: this.t };
+    const d = this.fx.lastDeath;
+    if (d && d.key === f.lane_id && this.m.phase() !== "pit") {
+      if (this.cam) this.camPool.push(...this.cam.frames.map(q => q.cv));
+      this.cam = { x: d.x, y: d.y, t: this.t, frames: [] };
+    }
+  }
+
+  syncMusic() {
+    if (!this.music) return;
+    if (!this.sfx.muted && this.music.on) this.music.start(); else this.music.stop();
+  }
+
+  toggleSound() { this.sfx.toggle(); this.syncMusic(); }
 
   onTicker(t) {
     this.m.applyTicker(t);
     const col = { first_blood: C.red, new_cluster: TYPE_COLOR.sanitizer, lead_change: C.gold }[t.kind] || C.text;
     this.say(t.text, col);
-    if (t.kind === "lead_change") this.sfx.play("lead");
+    if (t.kind === "lead_change") { this.sfx.play("lead"); if (this.music) this.music.hit("lead"); }
     if (t.kind === "new_cluster") this.sfx.play("newcluster");
   }
 
@@ -99,6 +131,8 @@ export class Race {
     this.goHeat = id;
     this.goT = this.t;
     this.replay = null;
+    this.fx.clearDecals();
+    this.banner = null; this.cam = null;
     this.sfx.play("go");
   }
 
@@ -152,7 +186,13 @@ export class Race {
     const tabs = { 1: "heat", 2: "constructors", 3: "games", 4: "season" };
     if (tabs[k]) { this.tab = tabs[k]; this.auto = false; return true; }
     switch (k.toLowerCase()) {
-      case "m": this.sfx.toggle(); return true;
+      case "m": this.toggleSound(); return true;
+      case "b":
+        if (!this.music) return false;
+        this.music.on = !this.music.on;
+        this.syncMusic();
+        this.toast(this.music.on ? (this.sfx.muted ? "MUSIC ON - [M] FOR SOUND" : "MUSIC ON") : "MUSIC OFF", C.magenta);
+        return true;
       case "a": this.auto = !this.auto; this.autoT = 0; this.toast(this.auto ? "AUTO TABS ON" : "AUTO TABS OFF"); return true;
       case "escape": this.select(null); return true;
       case "f": if (this.sel && this.hooks.onFocus) this.hooks.onFocus(this.sel); return true;
@@ -191,9 +231,15 @@ export class Race {
     const [sx, sy] = this.fx.shakeOffset();
     ctx.drawImage(this.bg, 0, TOP, 704, TICK_Y - TOP, sx, TOP + sy, 704, TICK_Y - TOP);
     const pit = this.m.phase() === "pit";
+    if (this.music) this.music.follow(this.m.heat && this.m.heat.id, pit ? "pit" : this.m.remaining(now) < 60000 ? "final" : "race");
+    this.drawTrackLights(ctx, sx, sy);
     if (!pit) this.drawInfield(ctx, now);
     this.drawCars(ctx, dt, sx, sy);
+    if (this.t - this.fx.flashT < 0.12) {
+      ctx.globalAlpha = 0.35; ctx.fillStyle = C.white; ctx.fillRect(0, TOP, 704, TICK_Y - TOP); ctx.globalAlpha = 1;
+    }
     if (pit) this.drawPit(ctx, dt, now);
+    else { this.drawKillCam(ctx, dt); this.drawBanner(ctx); }
     this.drawLights(ctx, now);
     this.drawTower(ctx);
     this.drawTopBar(ctx, now);
@@ -201,10 +247,73 @@ export class Race {
     if (this.sel) this.drawPanel(ctx);
     if (this.toastMsg && this.t - this.toastMsg.t < 2.5) {
       const s = this.toastMsg.text, w = textWidth(s, 2) + 16;
-      ctx.fillStyle = C.black; ctx.fillRect(352 - w / 2, 250, w, 28);
-      ctx.fillStyle = this.toastMsg.col; ctx.fillRect(352 - w / 2, 250, w, 2); ctx.fillRect(352 - w / 2, 276, w, 2);
+      cutBox(ctx, 352 - w / 2 - 2, 248, w + 4, 32, this.toastMsg.col, 6);
+      cutBox(ctx, 352 - w / 2, 250, w, 28, C.black, 5);
       textC(ctx, s, 352, 257, this.toastMsg.col, 2);
     }
+  }
+
+  // Speed pads pulse front to back; a light runs round both rails every 2 s.
+  drawTrackLights(ctx, sx, sy) {
+    const k = Math.floor(this.t * 8) & 3;
+    ctx.fillStyle = "#fffbb0";
+    for (const [x, y, c] of this.track.padPix || []) if (c === (3 - k)) ctx.fillRect(x + sx, y + sy, 1, 1);
+    const L = this.track.length, d0 = ((this.t / 2) % 1) * L, half = this.track.half;
+    for (let i = 0; i < 10; i++) {
+      ctx.globalAlpha = 1 - i / 10;
+      for (const [lat, col] of [[half - 1, C.white], [-(half - 1), "#ffd0f4"]]) {
+        const p = this.track.at(d0 - i * 3, lat);
+        ctx.fillStyle = col;
+        ctx.fillRect(Math.round(p.x) + sx - 1, Math.round(p.y) + sy, 2, 1);
+      }
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  // ---------- deaths: banner and kill-cam ----------
+
+  drawBanner(ctx) {
+    const b = this.banner;
+    if (!b) return;
+    const age = this.t - b.t;
+    if (age > 1.6) { this.banner = null; return; }
+    if (age > 1.2 && Math.floor(age * 16) % 2) return;
+    const y = 226, scale = age < 0.08 ? 4 : 3, wide = wideWidth(b.title, scale);
+    const strobe = Math.floor(age / 0.08) % 2 ? C.white : C.red;
+    ctx.fillStyle = "rgba(4,5,10,0.94)"; ctx.fillRect(0, y - 6, 704, 46);
+    for (let x = -12; x < 704; x += 12) for (let r = 0; r < 3; r++) {
+      ctx.fillStyle = C.red; ctx.fillRect(x + r + Math.floor(this.t * 40) % 12, y - 6 + r, 6, 1); ctx.fillRect(x - r + Math.floor(this.t * 40) % 12 + 3, y + 37 + r, 6, 1);
+    }
+    textWide(ctx, b.title, 352 - Math.floor(wide / 2), y + (scale === 4 ? -2 : 1), strobe, scale);
+    textC(ctx, b.sub, 352, y + 28, C.text);
+  }
+
+  drawKillCam(ctx, dt) {
+    const k = this.cam;
+    if (!k || !this.screen) return;
+    const age = this.t - k.t;
+    if (age > CAM.secs + 0.6) { this.camPool.push(...k.frames.map(q => q.cv)); this.cam = null; return; }
+    // capture this frame's region around the death site, then play back slowed down
+    const sw = CAM.w / 2, sh = CAM.h / 2;
+    const rx = Math.max(0, Math.min(704 - sw, Math.round(k.x - sw / 2)));
+    const ry = Math.max(TOP, Math.min(TICK_Y - sh, Math.round(k.y - sh / 2)));
+    if (age <= CAM.secs && k.frames.length < 90) {
+      const cv = this.camPool.pop() || newCanvas(sw, sh);
+      cv.getContext("2d").drawImage(this.screen, rx, ry, sw, sh, 0, 0, sw, sh);
+      k.frames.push({ t: age, cv });
+    }
+    k.play = (k.play || 0) + dt * (age < CAM.slow ? 0.5 : 1);
+    let f = k.frames[0];
+    for (const q of k.frames) if (q.t <= k.play) f = q;
+    if (!f) return;
+    const { x, y, w, h } = CAM;
+    cutBox(ctx, x - 2, y - 2, w + 4, h + 14, C.red, 6);
+    ctx.fillStyle = C.black; ctx.fillRect(x, y, w, h);
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(f.cv, 0, 0, sw, sh, x, y, w, h);
+    ctx.fillStyle = Math.floor(this.t * 4) % 2 ? C.red : C.blood1; ctx.fillRect(x + 4, y + h + 3, 6, 6);
+    text(ctx, "KILL CAM", x + 14, y + h + 2, C.white);
+    textR(ctx, age < CAM.slow ? "0.5X" : "1X", x + w - 4, y + h + 2, C.text);
   }
 
   // ---------- scenery ----------
@@ -212,36 +321,44 @@ export class Race {
   paintScenery(g) {
     let r = 99;
     const rnd = () => ((r = (Math.imul(r, 1103515245) + 12345) >>> 0) / 4294967296);
-    // grandstand along the top straight
-    g.fillStyle = "#2a2a3e"; g.fillRect(150, 26, 404, 44);
-    g.fillStyle = "#44445e"; g.fillRect(146, 24, 412, 4);
-    const crowd = ["#ff004d", "#ffa300", "#ffec27", "#29adff", "#ff77a8", "#fff1e8", "#00e436", "#83769c"];
-    for (let y = 31; y < 66; y += 4) for (let x = 154; x < 550; x += 3) {
-      if (rnd() < 0.18) continue;
-      g.fillStyle = crowd[Math.floor(rnd() * crowd.length)];
-      g.fillRect(x, y, 2, 2);
+    // arcology block along the top straight: window lights
+    cutBox(g, 150, 26, 404, 44, "#0a0d1a", 6);
+    g.fillStyle = C.cyan; g.fillRect(156, 24, 392, 1);
+    for (let y = 31; y < 66; y += 4) for (let x = 156; x < 548; x += 3) {
+      const n = rnd();
+      if (n < 0.7) continue;
+      g.fillStyle = n < 0.9 ? "#1b2240" : n < 0.96 ? "#00a3b0" : n < 0.985 ? "#b01e94" : C.white;
+      g.fillRect(x, y, 2, 1);
     }
-    // advertising boards
-    const ads = [["SIGSEGV", "#ff004d"], ["ASAN", "#ff3df5"], ["ENOSPC", "#29adff"], ["SIGWINCH", "#ffa300"], ["UBSAN", "#00e436"]];
+    // holo boards
+    const ads = [["SIGSEGV", C.red], ["ASAN", C.magenta], ["ENOSPC", C.cyan], ["SIGWINCH", C.amber], ["UBSAN", C.green]];
     let x = 160;
     for (const [s, col] of ads) {
       const w = textWidth(s) + 8;
-      g.fillStyle = "#101018"; g.fillRect(x, 70, w, 9);
+      g.fillStyle = col; g.fillRect(x, 70, w, 1); g.fillRect(x, 78, w, 1);
+      g.fillStyle = "#060814"; g.fillRect(x, 71, w, 7);
       text(g, s, x + 4, 71, col);
       x += w + 12;
     }
-    // pit building along the bottom
-    g.fillStyle = "#3a3a52"; g.fillRect(150, 474, 404, 40);
-    g.fillStyle = "#55557a"; g.fillRect(146, 472, 412, 3);
+    // pit complex along the bottom: one lit bay per constructor
+    cutBox(g, 150, 474, 404, 40, "#0a0d1a", 6);
+    g.fillStyle = C.magenta; g.fillRect(156, 472, 392, 1);
     for (let i = 0; i < 12; i++) {
-      g.fillStyle = i % 2 ? "#1d1d2e" : "#24243a";
+      g.fillStyle = i % 2 ? "#0d1020" : "#10142a";
       g.fillRect(160 + i * 32, 486, 26, 24);
       g.fillStyle = faultColor(["none", "malloc-1pct", "malloc-0.1pct", "io-save-5pct", "strace-enospc-save", "strace-eintr-read",
         "winch-storm", "rlimit-tight", "time-warp", "keystorm", "x", "y"][i]);
-      g.fillRect(160 + i * 32, 480, 26, 3);
+      g.fillRect(160 + i * 32, 480, 26, 2);
+      g.fillRect(160 + i * 32, 509, 26, 1);
     }
-    g.fillStyle = "#101018"; g.fillRect(320, 462, 64, 9);
-    text(g, "PIT LANE", 328, 463, C.gold);
+    g.fillStyle = "#060814"; g.fillRect(320, 462, 64, 9);
+    text(g, "PIT LANE", 328, 463, C.yellow);
+    // start gate gantry: pylons both sides of the line and their beacons
+    const gx = this.track.startX, ty = this.track.cy + this.track.R, hf = this.track.half;
+    for (const py of [ty - hf - 6, ty + hf + 2]) {
+      g.fillStyle = "#1b2240"; g.fillRect(gx - 2, py, 6, 4);
+      g.fillStyle = C.yellow; g.fillRect(gx, py + 1, 2, 2);
+    }
   }
 
   // ---------- track and cars ----------
@@ -271,9 +388,24 @@ export class Race {
       }
       c.lat += (tg.lat - c.lat) * Math.min(1, dt * 3);
       const p = this.track.at(c.d, c.lat);
-      placed.push({ l, p, big: l.pos > 0 && l.pos <= 10 && l.score > 0 });
+      const tr = c.trail || (c.trail = []);
+      const last = tr[tr.length - 1];
+      if (!last || Math.abs(last.x - p.x) + Math.abs(last.y - p.y) >= 2) { tr.push({ x: p.x, y: p.y }); if (tr.length > 6) tr.shift(); }
+      placed.push({ l, p, c, big: l.pos > 0 && l.pos <= 10 && l.score > 0 });
     }
     this.fx.drawUnder(ctx);
+    // engine trails, oldest faintest
+    for (const { l, c, big } of placed) {
+      const m = this.fx.car(l.lane_id);
+      if (l.status === "ended" || (m && (m.hidden || m.dead))) continue;
+      ctx.fillStyle = faultColor(l.fault);
+      const tr = c.trail, n = tr.length, s = big ? 2 : 1;
+      for (let i = 0; i < n - 1; i++) {
+        ctx.globalAlpha = 0.08 + (i / n) * 0.4;
+        ctx.fillRect(Math.round(tr[i].x - s / 2) + sx, Math.round(tr[i].y - s / 2) + sy, s, s);
+      }
+    }
+    ctx.globalAlpha = 1;
     // small cars first, then the top 10 on top (leader last)
     placed.sort((a, b) => (a.big - b.big) || (b.l.pos || 999) - (a.l.pos || 999));
     for (const { l, p, big } of placed) {
@@ -286,20 +418,22 @@ export class Race {
       this.carHits.push({ id, x, y, r: big ? 10 : 6 });
       if (m && m.hidden) continue;
       let body = faultColor(l.fault), acc = gameColor(l.game);
-      if (l.status === "ended") { body = "#4a4a5a"; acc = "#5f5f6f"; }
-      else if (l.status === "stale" && Math.floor(this.t * 2) % 2) { body = "#6a6a7a"; }
-      if (m && m.flash) { body = "#ffffff"; acc = "#ffffff"; }
+      let glow = (Math.floor(this.t * 15) + (hash(id) & 1)) & 1;
+      if (l.status === "ended") { body = "#2a3050"; acc = "#3a4470"; glow = -1; }
+      else if (l.status === "stale" && Math.floor(this.t * 2) % 2) { body = "#4a5680"; }
+      if (m && m.dead) { body = "#3a4470"; glow = -1; }
+      if (m && m.flash) { body = C.white; acc = C.white; }
       if (m && m.glitch) {
         const gx = Math.floor(this.fx.rnd() * 5) - 2;
-        drawCar(ctx, x + gx, y, ang, big, TYPE_COLOR.visual, "#ff00ff");
-        ctx.fillStyle = Math.floor(this.t * 30) % 2 ? "#ff00ff" : TYPE_COLOR.visual;
+        drawCar(ctx, x + gx, y, ang, big, TYPE_COLOR.visual, C.magenta, 1, glow);
+        ctx.fillStyle = Math.floor(this.t * 30) % 2 ? C.magenta : TYPE_COLOR.visual;
         ctx.fillRect(Math.round(x - 6 + gx * 2), Math.round(y - 1 + gx), 12, 1);
       } else {
-        drawCar(ctx, x, y, ang, big, body, acc);
+        drawCar(ctx, x, y, ang, big, body, acc, 1, glow);
       }
       if (id === this.sel && Math.floor(this.t * 3) % 2 === 0) {
         const r = big ? 10 : 7;
-        ctx.fillStyle = C.white;
+        ctx.fillStyle = C.cyan;
         ctx.fillRect(Math.round(x - r), Math.round(y - r), 3, 1); ctx.fillRect(Math.round(x - r), Math.round(y - r), 1, 3);
         ctx.fillRect(Math.round(x + r - 2), Math.round(y - r), 3, 1); ctx.fillRect(Math.round(x + r), Math.round(y - r), 1, 3);
         ctx.fillRect(Math.round(x - r), Math.round(y + r), 3, 1); ctx.fillRect(Math.round(x - r), Math.round(y + r - 2), 1, 3);
@@ -321,7 +455,7 @@ export class Race {
 
   drawInfield(ctx, now) {
     const cx = this.track.cx, h = this.m.heat;
-    textC(ctx, h ? `HEAT ${h.id}` : "WAITING FOR SCOREBOARD", cx, 134, C.muted);
+    textWideC(ctx, h ? `HEAT ${h.id}` : "WAITING FOR SCOREBOARD", cx, 134, C.muted);
     const rem = this.m.remaining(now);
     const col = rem < 60000 && Math.floor(this.t * 2) % 2 ? C.red : C.white;
     textC(ctx, fmtClock(rem), cx, 146, col, 4);
@@ -354,8 +488,9 @@ export class Race {
       textC(ctx, fit(f.detail || f.stack_hash || "", 44), cx, 320, C.muted);
     }
     textC(ctx, `1 LAP = ${fmtPts(this.m.lapPoints)} PTS`, cx, 352, C.dim);
-    textC(ctx, "BODY = CONSTRUCTOR  STRIPE = GAME", cx, 362, C.dim);
-    textC(ctx, "CLICK A CAR  [1-4] TABS  [M] SOUND", cx, 384, C.dim);
+    textC(ctx, "HULL = CONSTRUCTOR  STRIPE = GAME", cx, 362, C.dim);
+    textC(ctx, "CLICK A SHIP  [1-4] TABS  [M] SOUND  [B] MUSIC", cx, 384, C.dim);
+    builtWith(ctx, cx - Math.floor(BADGE_W / 2), 398);
   }
 
   drawLights(ctx, now) {
@@ -364,14 +499,15 @@ export class Race {
     const go = this.t - this.goT < 2.2;
     if (!(pit && rem <= 5000) && !go) return;
     const cx = this.track.cx, y = 86;
-    ctx.fillStyle = C.black; ctx.fillRect(cx - 62, y - 4, 124, 22);
+    cutBox(ctx, cx - 64, y - 6, 128, 26, C.cyan, 5);
+    cutBox(ctx, cx - 62, y - 4, 124, 22, C.black, 4);
     const lit = go ? 5 : Math.min(5, 5 - Math.floor(rem / 1000));
     if (pit && lit !== this.lastLight) { this.lastLight = lit; if (lit > 0) this.sfx.play("light"); }
     for (let i = 0; i < 5; i++) {
-      ctx.fillStyle = go ? (Math.floor(this.t * 6) % 2 ? C.green : "#00a028") : i < lit ? C.red : "#3a1020";
+      ctx.fillStyle = go ? (Math.floor(this.t * 6) % 2 ? C.cyan : "#007a82") : i < lit ? C.red : "#3a1020";
       ctx.fillRect(cx - 56 + i * 24, y, 14, 14);
     }
-    if (go) textC(ctx, "GO! GO! GO!", cx, y + 20, C.green, 2);
+    if (go) textWideC(ctx, "GO GO GO", cx, y + 24, C.cyan, 2);
   }
 
   // ---------- pit: podium + attract replays ----------
@@ -386,17 +522,18 @@ export class Race {
   }
 
   drawPit(ctx, dt, now) {
-    ctx.fillStyle = "rgba(6,6,16,0.84)";
+    ctx.fillStyle = "rgba(4,5,10,0.86)";
     ctx.fillRect(0, TOP, 704, TICK_Y - TOP);
     this.hit("pit", 0, TOP, 704, TICK_Y - TOP, () => {});
-    // chequered bars
-    for (let x = 0; x < 704; x += 4) for (let r = 0; r < 2; r++) {
-      ctx.fillStyle = ((x >> 2) + r) % 2 ? C.white : C.black;
-      ctx.fillRect(x, TOP + 2 + r * 4, 4, 4); ctx.fillRect(x, TICK_Y - 10 + r * 4, 4, 4);
+    // slanted hazard bands, scrolling
+    const off = Math.floor(this.t * 20) % 12;
+    for (let x = -12; x < 716; x += 12) for (let r = 0; r < 6; r++) {
+      ctx.fillStyle = C.yellow;
+      ctx.fillRect(x + off - r, TOP + 2 + r, 6, 1); ctx.fillRect(x - off + r, TICK_Y - 8 + r, 6, 1);
     }
     const h = this.m.heat || {};
-    textC(ctx, `CHEQUERED FLAG  ${h.id || ""}`, 352, 36, C.white, 2);
-    textC(ctx, `PIT STOP - NEXT HEAT ${h.next_id || ""} IN ${fmtClock(this.m.remaining(now))}`, 352, 58, C.amber);
+    textWideC(ctx, `HEAT OVER  ${h.id || ""}`, 352, 34, C.white, 2);
+    textC(ctx, `PIT STOP - NEXT HEAT ${h.next_id || ""} IN ${fmtClock(this.m.remaining(now))}`, 352, 58, C.yellow);
 
     // podium
     const pod = this.podium();
@@ -404,8 +541,8 @@ export class Race {
     textC(ctx, "PODIUM", 175, 122, C.muted);
     for (const [pos, x, hgt, col] of blocks) {
       const r = pod.find(p => p.pos === pos);
-      ctx.fillStyle = col; ctx.fillRect(x, base - hgt, 90, hgt);
-      ctx.fillStyle = "rgba(0,0,0,0.25)"; ctx.fillRect(x, base - hgt, 90, 4);
+      cutBox(ctx, x, base - hgt, 90, hgt, col, 6);
+      ctx.fillStyle = "rgba(0,0,0,0.25)"; ctx.fillRect(x + 6, base - hgt, 84, 4);
       textC(ctx, String(pos), x + 45, base - hgt + 7, C.black, 3);
       if (!r) continue;
       this.hit("podium:" + r.lane_id, x, base - hgt - 46, 90, hgt + 46, () => this.select(r.lane_id));
@@ -415,7 +552,7 @@ export class Race {
       textC(ctx, `${fmtPts(r.score)} PTS`, x + 45, base - hgt - 34, col);
       textC(ctx, `+${r.points}`, x + 45, base - 10, C.black);
     }
-    ctx.fillStyle = "#2a2a3e"; ctx.fillRect(30, base, 300, 4);
+    ctx.fillStyle = C.cyan; ctx.fillRect(30, base, 300, 1);
     if (!pod.length) textC(ctx, "NO FINISHERS", 175, 200, C.muted, 2);
     let y = base + 14;
     for (const r of pod.filter(p => p.pos > 3).slice(0, 7)) {
@@ -431,12 +568,12 @@ export class Race {
       y += 11;
     }
     this.drawReplay(ctx, dt);
+    builtWith(ctx, 175 - Math.floor(BADGE_W / 2), TICK_Y - 26);
   }
 
   drawReplay(ctx, dt) {
     const X = 352, Y = 112, Wd = 336, Hd = 380;
-    ctx.fillStyle = "#0e0e20"; ctx.fillRect(X, Y, Wd, Hd);
-    ctx.fillStyle = C.line; ctx.fillRect(X, Y, Wd, 1); ctx.fillRect(X, Y + Hd - 1, Wd, 1); ctx.fillRect(X, Y, 1, Hd); ctx.fillRect(X + Wd - 1, Y, 1, Hd);
+    cutFrame(ctx, X, Y, Wd, Hd, C.cyan, 8);
     if (!this.replay) this.replay = { i: -1, t: REPLAY_SECS, list: [], fx: new Fx(5) };
     const rp = this.replay;
     rp.t += dt;
@@ -457,21 +594,26 @@ export class Race {
     const mo = rp.list[rp.i], f = mo.f;
     // mini track strip
     const ry = Y + 30, rh = 70;
-    ctx.fillStyle = "#1f6b2a"; ctx.fillRect(X + 4, ry, Wd - 8, rh);
-    ctx.fillStyle = "#3a3a4a"; ctx.fillRect(X + 4, ry + 14, Wd - 8, rh - 28);
-    ctx.fillStyle = C.wl || "#d8d8e0"; ctx.fillRect(X + 4, ry + 14, Wd - 8, 1); ctx.fillRect(X + 4, ry + rh - 15, Wd - 8, 1);
-    for (let x = X + 4 + ((-Math.floor(rp.t * 60)) % 16 + 16) % 16; x < X + Wd - 8; x += 16) { ctx.fillStyle = "#8a8a9a"; ctx.fillRect(x, ry + rh / 2, 8, 1); }
+    ctx.fillStyle = C.void; ctx.fillRect(X + 4, ry, Wd - 8, rh);
+    ctx.fillStyle = C.deck; ctx.fillRect(X + 4, ry + 14, Wd - 8, rh - 28);
+    ctx.fillStyle = C.magenta; ctx.fillRect(X + 4, ry + 14, Wd - 8, 2);
+    ctx.fillStyle = C.cyan; ctx.fillRect(X + 4, ry + rh - 16, Wd - 8, 2);
+    for (let x = X + 4 + ((-Math.floor(rp.t * 60)) % 16 + 16) % 16; x < X + Wd - 8; x += 16) {
+      ctx.fillStyle = C.yellow; ctx.fillRect(x, ry + rh / 2 - 2, 2, 1); ctx.fillRect(x + 1, ry + rh / 2 - 1, 2, 1); ctx.fillRect(x + 2, ry + rh / 2, 2, 1);
+      ctx.fillRect(x + 1, ry + rh / 2 + 1, 2, 1); ctx.fillRect(x, ry + rh / 2 + 2, 2, 1);
+    }
     const fx = rp.fx;
     if (!fx.stalled("r")) rp.d += dt / REPLAY_SECS * 1.25;
     const cx = X + 20 + Math.min(1, rp.d) * (Wd - 40), cy = ry + rh / 2;
     fx.setPos("r", cx, cy, 0);
-    if (!rp.fired && rp.d >= 0.4) { rp.fired = true; fx.trigger("r", f.type, f.points); this.sfx.play(f.type); }
+    if (!rp.fired && rp.d >= 0.4) { rp.fired = true; fx.trigger("r", f.type, f.points, { body: faultColor(f.fault), acc: gameColor(f.game) }); this.sfx.play(f.type); }
     fx.update(dt);
     fx.drawUnder(ctx);
     const m = fx.car("r");
     if (!(m && m.hidden)) {
-      const body = m && m.flash ? "#ffffff" : m && m.glitch ? TYPE_COLOR.visual : faultColor(f.fault);
-      drawCar(ctx, cx + (m && m.jitter || 0) * 2, cy, m ? m.spin : 0, true, body, m && m.glitch ? "#ff00ff" : gameColor(f.game), 2);
+      const body = m && m.flash ? C.white : m && m.glitch ? TYPE_COLOR.visual : m && m.dead ? "#3a4470" : faultColor(f.fault);
+      drawCar(ctx, cx + (m && m.jitter || 0) * 2, cy, m ? m.spin : 0, true, body, m && m.glitch ? C.magenta : gameColor(f.game), 2,
+        m && m.dead ? -1 : Math.floor(this.t * 15) & 1);
     }
     fx.drawOver(ctx);
     // caption
@@ -503,11 +645,11 @@ export class Race {
   drawTower(ctx) {
     const x0 = TOWER_X, y0 = TOP + 2;
     ctx.fillStyle = C.panel; ctx.fillRect(x0 - 2, TOP, W - x0 + 2, TICK_Y - TOP);
-    ctx.fillStyle = C.line; ctx.fillRect(x0 - 2, TOP, 1, TICK_Y - TOP);
+    ctx.fillStyle = C.cyan; ctx.fillRect(x0 - 2, TOP, 1, TICK_Y - TOP);
     let tx = x0;
     for (const [id, label] of TABS) {
       const w = textWidth(label) + 10, on = id === this.tab;
-      ctx.fillStyle = on ? C.gold : C.panel2; ctx.fillRect(tx, y0, w, 12);
+      cutBox(ctx, tx, y0, w, 12, on ? C.cyan : C.panel2, 3);
       text(ctx, label, tx + 5, y0 + 2, on ? C.black : C.muted);
       this.hit("tab:" + id, tx, y0, w, 12, () => { this.tab = id; this.auto = false; });
       tx += w + 3;
@@ -544,7 +686,7 @@ export class Race {
       } else if (l.lane_id === this.sel) {
         ctx.fillStyle = C.line; ctx.fillRect(x - 1, y - 1, cw - 2, rh);
       } else if (r % 2) {
-        ctx.fillStyle = "#18182f"; ctx.fillRect(x - 1, y - 1, cw - 2, rh);
+        ctx.fillStyle = "#0f1428"; ctx.fillRect(x - 1, y - 1, cw - 2, rh);
       }
       const flashing = fl && this.t - fl.t < 3 && Math.floor((this.t - fl.t) * 6) % 2 === 0;
       const scored = l.score > 0;
@@ -581,9 +723,10 @@ export class Race {
     let y = y0 + 14;
     for (const r of rows) {
       if (y > TICK_Y - 30) break;
-      const col = isFault ? faultColor(r.key) : C.white, acc = isFault ? "#fff1e8" : gameColor(r.key);
+      const col = isFault ? faultColor(r.key) : C.white;
       textR(ctx, String(r.pos), x0 + 14, y + 2, r.pos === 1 ? C.gold : C.text);
-      drawCar(ctx, x0 + 28, y + 5, 0, false, isFault ? col : "#c2c3c7", acc);
+      if (isFault) picto(ctx, x0 + 24, y + 2, r.key, col);
+      else drawCar(ctx, x0 + 28, y + 5, 0, false, "#c8d6f0", gameColor(r.key));
       text(ctx, fit(r.key, 18), x0 + 40, y + 2, isFault ? col : gameColor(r.key));
       textR(ctx, fmtPts(r.score), x0 + 178, y + 2, C.text);
       textR(ctx, String(r.lanes), x0 + 202, y + 2, C.muted);
@@ -632,13 +775,14 @@ export class Race {
 
   drawTopBar(ctx, now) {
     ctx.fillStyle = C.black; ctx.fillRect(0, 0, W, TOP);
-    ctx.fillStyle = C.red; ctx.fillRect(0, TOP - 1, W, 1);
-    text(ctx, "TORMENT", 4, 2, C.red, 2);
-    text(ctx, "NEXUS", 92, 2, C.gold, 2);
+    // slanted stripe band
+    for (let x = -6; x < W; x += 8) for (let r = 0; r < 2; r++) { ctx.fillStyle = r ? C.cyan : C.magenta; ctx.fillRect(x + (1 - r), TOP - 2 + r, 4, 1); }
+    textWide(ctx, "TORMENT", 4, 6, C.magenta);
+    textWide(ctx, "NEXUS", 92, 6, C.cyan);
     const h = this.m.heat;
     const pit = this.m.phase() === "pit";
     const bx = 160;
-    ctx.fillStyle = pit ? C.amber : C.green; ctx.fillRect(bx, 3, 34, 14);
+    cutBox(ctx, bx, 3, 34, 14, pit ? C.amber : C.cyan, 3);
     textC(ctx, pit ? "PIT" : "RACE", bx + 17, 6, C.black);
     textC(ctx, fmtClock(this.m.remaining(now)), bx + 72, 2, pit ? C.amber : C.white, 2);
     text(ctx, h ? h.id : "----", bx + 112, 2, C.text);
@@ -658,17 +802,23 @@ export class Race {
     ctx.fillStyle = this.connected ? C.green : (Math.floor(this.t * 2) % 2 ? C.red : "#501020");
     ctx.fillRect(712, 7, 6, 6);
     text(ctx, this.connected ? "LIVE" : "RECONNECTING", 722, 6, this.connected ? C.green : C.red);
-    // mute button
+    // music and mute buttons
+    if (this.music) {
+      const on = this.music.playing;
+      cutBox(ctx, 804, 3, 52, 14, on ? C.magenta : C.panel2, 3);
+      text(ctx, "[B] DNB", 809, 6, on ? C.black : this.music.on ? C.muted : C.dim);
+      this.hit("music", 804, 3, 52, 14, () => this.key("b"));
+    }
     const mx = 860, label = this.sfx.muted ? "SFX OFF" : "SFX ON";
-    ctx.fillStyle = this.sfx.muted ? C.panel2 : C.gold; ctx.fillRect(mx, 3, 96, 14);
+    cutBox(ctx, mx, 3, 96, 14, this.sfx.muted ? C.panel2 : C.yellow, 3);
     speaker(ctx, mx + 4, 6, this.sfx.muted ? C.muted : C.black, this.sfx.muted);
     text(ctx, `[M] ${label}`, mx + 18, 6, this.sfx.muted ? C.muted : C.black);
-    this.hit("mute", mx, 3, 96, 14, () => this.sfx.toggle());
+    this.hit("mute", mx, 3, 96, 14, () => this.toggleSound());
   }
 
   drawTicker(ctx, dt) {
     ctx.fillStyle = C.black; ctx.fillRect(0, TICK_Y, W, H - TICK_Y);
-    ctx.fillStyle = C.line; ctx.fillRect(0, TICK_Y, W, 1);
+    ctx.fillStyle = C.cyan; ctx.fillRect(0, TICK_Y, W, 1);
     const backlog = this.marquee.filter(m => m.x > W).length;
     const speed = 60 + backlog * 20;
     for (const m of this.marquee) {
@@ -677,8 +827,8 @@ export class Race {
     }
     this.marquee = this.marquee.filter(m => m.x + textWidth(m.text) > 0);
     if (!this.marquee.length) this.say("TORMENT NEXUS - AI AGENTS PLAY GAMES UNDER INJECTED FAULTS - EVERY CRASH SCORES", C.muted);
-    ctx.fillStyle = C.red; ctx.fillRect(0, TICK_Y + 1, 34, H - TICK_Y - 1);
-    text(ctx, "LIVE", 5, TICK_Y + 4, C.white);
+    cutBox(ctx, 0, TICK_Y + 1, 36, H - TICK_Y - 1, C.magenta, 4);
+    text(ctx, "LIVE", 5, TICK_Y + 4, C.black);
   }
 
   // ---------- lane panel ----------
@@ -689,8 +839,8 @@ export class Race {
     const live = this.m.lanes.get(this.sel) || {};
     const fc = faultColor(lane.fault);
     ctx.fillStyle = "rgba(0,0,0,0.5)"; ctx.fillRect(x - 4, y - 2, w + 8, h + 4);
-    ctx.fillStyle = C.panel; ctx.fillRect(x, y, w, h);
-    ctx.fillStyle = fc; ctx.fillRect(x, y, w, 2); ctx.fillRect(x, y + h - 2, w, 2); ctx.fillRect(x, y, 2, h); ctx.fillRect(x + w - 2, y, 2, h);
+    cutBox(ctx, x, y, w, h, fc, 10);
+    cutBox(ctx, x + 2, y + 2, w - 4, h - 4, C.panel, 9);
     this.hit("panel", x, y, w, h, () => {}); // swallow clicks inside the panel
     // header
     drawCar(ctx, x + 18, y + 13, 0, true, fc, gameColor(lane.game));
@@ -702,10 +852,10 @@ export class Race {
     text(ctx, `${lane.hits ?? live.hits ?? 0} HITS  ${lane.clusters ?? live.clusters ?? 0} CLUSTERS  ${live.season_points ?? lane.season_points ?? 0} SEASON PTS`, x + 214, y + 15, C.muted);
     // buttons
     const bx = x + w - 172;
-    ctx.fillStyle = C.sky; ctx.fillRect(bx, y + 5, 112, 15);
+    cutBox(ctx, bx, y + 5, 112, 15, C.cyan, 4);
     text(ctx, "[F] FOCUS ON WALL", bx + 4, y + 9, C.black);
     this.hit("focus", bx, y + 5, 112, 15, () => this.hooks.onFocus && this.hooks.onFocus(this.sel));
-    ctx.fillStyle = C.red; ctx.fillRect(x + w - 54, y + 5, 48, 15);
+    cutBox(ctx, x + w - 54, y + 5, 48, 15, C.red, 4);
     text(ctx, "[ESC]X", x + w - 50, y + 9, C.white);
     this.hit("close", x + w - 54, y + 5, 48, 15, () => this.select(null));
 
@@ -807,6 +957,45 @@ export class Race {
     }
     return cv;
   }
+}
+
+/** Filled box with the top-left and bottom-right corners cut at 45 degrees. */
+function cutBox(ctx, x, y, w, h, col, cut = 4) {
+  x = Math.round(x); y = Math.round(y); w = Math.round(w); h = Math.round(h);
+  cut = Math.min(cut, Math.floor(h / 2), w);
+  ctx.fillStyle = col;
+  for (let i = 0; i < cut; i++) {
+    ctx.fillRect(x + cut - i, y + i, w - (cut - i), 1);
+    ctx.fillRect(x, y + h - 1 - i, w - (cut - i), 1);
+  }
+  ctx.fillRect(x, y + cut, w, h - 2 * cut);
+}
+
+/** 1px outline of cutBox. */
+function cutFrame(ctx, x, y, w, h, col, cut = 4) {
+  ctx.fillStyle = col;
+  ctx.fillRect(x + cut, y, w - cut, 1); ctx.fillRect(x, y + h - 1, w - cut, 1);
+  ctx.fillRect(x, y + cut, 1, h - cut); ctx.fillRect(x + w - 1, y, 1, h - cut);
+  for (let i = 0; i < cut; i++) { ctx.fillRect(x + cut - i, y + i, 1, 1); ctx.fillRect(x + w - 1 - i, y + h - cut + i, 1, 1); }
+}
+
+/** A constructor's 7x7 pictogram. */
+function picto(ctx, x, y, key, col) {
+  ctx.fillStyle = col;
+  pictogram(key).forEach((row, j) => { for (let i = 0; i < 7; i++) if (row & (1 << (6 - i))) ctx.fillRect(x + i, y + j, 1, 1); });
+}
+
+// "built with Minimal" badge: grey label, black value with the Minimal mark.
+const MARK = ["...##..##...", "....##..##..", "....##..##..", "##...##..##.", "###..##...##", ".##..##...##"];
+const BADGE_W = 4 + 59 + 4 + 4 + 12 + 3 + 41 + 4;
+function builtWith(ctx, x, y) {
+  const lw = 67;
+  ctx.fillStyle = "#555555"; ctx.fillRect(x, y, lw, 12);
+  ctx.fillStyle = "#0a0a0a"; ctx.fillRect(x + lw, y, BADGE_W - lw, 12);
+  text(ctx, "built with", x + 4, y + 2, "#ffffff");
+  ctx.fillStyle = "#e5e5e5";
+  MARK.forEach((row, j) => { for (let i = 0; i < row.length; i++) if (row[i] === "#") ctx.fillRect(x + lw + 4 + i, y + 3 + j, 1, 1); });
+  text(ctx, "Minimal", x + lw + 19, y + 2, "#ffffff");
 }
 
 function speaker(ctx, x, y, col, muted) {

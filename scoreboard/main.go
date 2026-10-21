@@ -13,6 +13,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/noric-labs/nexus/scoreboard/internal/agents"
 	"github.com/noric-labs/nexus/scoreboard/internal/server"
 	"github.com/noric-labs/nexus/scoreboard/web"
 )
@@ -24,6 +25,10 @@ func main() {
 	heat := flag.Duration("heat", 0, "heat duration, e.g. 30s (overrides config)")
 	pit := flag.Duration("pit", 0, "pit duration, e.g. 5s (overrides config)")
 	lap := flag.Float64("lap-points", 0, "points per lap (overrides config)")
+	agentsCfg := flag.String("agents-config", "", "lane/agents.json to edit at /agents (empty: editor disabled)")
+	agentsModels := flag.String("models", "", "lane/models.json: model ids for the agents editor (optional)")
+	agentsGames := flag.String("games", "", "harness/games.toml: game names for the agents editor (optional)")
+	agentsWritable := flag.Bool("agents-writable", false, "allow saving agents.json when listening on a non-loopback address")
 	flag.Parse()
 
 	cfg, err := server.LoadConfig(*cfgPath, true)
@@ -58,7 +63,21 @@ func main() {
 	defer stop()
 	go srv.Run(ctx)
 
-	hs := &http.Server{Addr: cfg.Listen, Handler: srv.Handler(web.FS), ReadHeaderTimeout: 10 * time.Second}
+	mux := http.NewServeMux()
+	mux.Handle("/", srv.Handler(web.FS))
+	mux.HandleFunc("GET /agents", func(w http.ResponseWriter, r *http.Request) {
+		http.ServeFileFS(w, r, web.FS, "agents.html")
+	})
+	if *agentsCfg != "" {
+		ed := &agents.Editor{Path: *agentsCfg, ModelsPath: *agentsModels, GamesPath: *agentsGames,
+			Writable: *agentsWritable || agents.IsLoopback(cfg.Listen)}
+		if err := ed.Check(); err != nil {
+			log.Fatal(err)
+		}
+		ed.Register(mux)
+		log.Printf("agents editor at /agents for %s (writable %v)", ed.Path, ed.Writable)
+	}
+	hs := &http.Server{Addr: cfg.Listen, Handler: mux, ReadHeaderTimeout: 10 * time.Second}
 	go func() {
 		<-ctx.Done()
 		sctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)

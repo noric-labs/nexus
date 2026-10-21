@@ -153,6 +153,18 @@ function png(cv) {
   ihdr.writeUInt32BE(w, 0); ihdr.writeUInt32BE(h, 4); ihdr[8] = 8; ihdr[9] = 6;
   return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk("IHDR", ihdr), chunk("IDAT", zlib.deflateSync(raw)), chunk("IEND", Buffer.alloc(0))]);
 }
+// count pixels in a box that exactly match any of the given #rrggbb colours
+function countPixels(cv, x0, y0, x1, y1, colors) {
+  const want = colors.map(parseColor);
+  let n = 0;
+  for (let y = Math.max(0, y0); y < Math.min(cv.height, y1); y++)
+    for (let x = Math.max(0, x0); x < Math.min(cv.width, x1); x++) {
+      const i = (y * cv.width + x) * 4, d = cv.data;
+      if (want.some(c => d[i] === c[0] && d[i + 1] === c[1] && d[i + 2] === c[2])) n++;
+    }
+  return n;
+}
+
 function shot(cv, name) {
   if (!PNG_DIR) return;
   mkdirSync(PNG_DIR, { recursive: true });
@@ -208,15 +220,21 @@ class NodeEventSource {
 
 // ---------- AudioContext stub (counts nodes) ----------
 
-const audio = { contexts: 0, oscillators: 0, sources: 0 };
-const param = () => ({ value: 0, setValueAtTime() {}, exponentialRampToValueAtTime() {}, linearRampToValueAtTime() {} });
+const audio = { contexts: 0, oscillators: 0, sources: 0, filters: 0, loops: 0 };
+const param = (value = 0) => ({ value, setValueAtTime() {}, exponentialRampToValueAtTime() {}, linearRampToValueAtTime() {}, setTargetAtTime() {}, cancelScheduledValues() {} });
 class FakeAudioContext {
   constructor() { audio.contexts++; this.currentTime = 0; this.sampleRate = 8000; this.state = "running"; this.destination = {}; this._t = setInterval(() => { this.currentTime += 0.05; }, 50); this._t.unref(); }
   node(extra) { return { connect() {}, disconnect() {}, start() {}, stop() {}, ...extra }; }
-  createGain() { return this.node({ gain: param() }); }
-  createOscillator() { audio.oscillators++; return this.node({ frequency: param(), type: "square" }); }
-  createBiquadFilter() { return this.node({ frequency: param(), Q: param(), type: "" }); }
-  createBufferSource() { audio.sources++; return this.node({ buffer: null }); }
+  createGain() { return this.node({ gain: param(1) }); }
+  createOscillator() { audio.oscillators++; return this.node({ frequency: param(440), detune: param(), type: "sine" }); }
+  createBiquadFilter() { audio.filters++; return this.node({ frequency: param(350), Q: param(1), gain: param(), type: "lowpass" }); }
+  createBufferSource() {
+    audio.sources++;
+    const n = this.node({ buffer: null, playbackRate: param(1) });
+    let loop = false;
+    Object.defineProperty(n, "loop", { get: () => loop, set: v => { if (v && !loop) audio.loops++; loop = !!v; }, enumerable: true });
+    return n;
+  }
   createBuffer(ch, len) { const d = new Float32Array(len); return { getChannelData: () => d }; }
   resume() { return Promise.resolve(); }
 }
@@ -232,7 +250,7 @@ async function main() {
   const page = await fetch(BASE);
   const html = await page.text();
   check("GET / serves the race UI", page.ok && html.includes('<canvas id="screen"') && html.includes('src="js/main.js"'), `status ${page.status}`);
-  const mods = ["main.js", "model.js", "ui.js", "audio.js", "theme.js", "font.js", "track.js", "sprites.js", "fx.js"];
+  const mods = ["main.js", "model.js", "ui.js", "audio.js", "theme.js", "font.js", "track.js", "sprites.js", "fx.js", "music.js"];
   for (const m of mods) {
     const r = await fetch(new URL("js/" + m, BASE));
     const body = await r.text();
@@ -280,14 +298,38 @@ async function main() {
   await sleep(350);
   shot(canvas, "1b-effects");
 
+  // crash + sanitizer are pilot deaths: banner, kill-cam, blood decals
+  const banner = race.banner;
+  check("death banner shown", !!banner && /PILOT TERMINATED|DOUBLE KILL|MULTI KILL/.test(banner.title), banner ? banner.title : "no banner");
+  const bannerPx = countPixels(canvas, 0, 220, 704, 266, ["#ff1f3a", "#eef6ff"]);
+  check("death banner drawn", bannerPx > 200, `${bannerPx} red/white pixels in the banner band`);
+  if (model.phase() !== "pit") {
+    await sleep(150);
+    check("kill-cam active", !!race.cam && race.cam.frames.length > 0, race.cam ? `${race.cam.frames.length} frames` : "no kill-cam");
+  }
+  await sleep(350);
+  shot(canvas, "1c-death");
+  await until(() => race.fx.decals.length > 0, 1500);
+  check("blood decals on the deck", race.fx.decals.length > 0, `${race.fx.decals.length} decals`);
+
   // 3. sound on: failures play synthesized SFX
   press("m");
   check("unmute creates an AudioContext", !app.sfx.muted && audio.contexts === 1);
   const osc0 = audio.oscillators;
   await until(() => audio.oscillators > osc0, 15000);
   check("SFX play on events", audio.oscillators > osc0, `${audio.oscillators} oscillators, ${audio.sources} noise sources`);
+
+  // music: on with sound, B toggles it alone
+  check("music plays when unmuted", app.music.playing === true);
+  const notes0 = app.music.notes;
+  check("music schedules notes", await until(() => app.music.notes > notes0, 1000, 50), `${app.music.notes - notes0} notes, ${audio.filters} filters, ${audio.loops} looped sources`);
+  press("b");
+  check("B stops the music only", app.music.playing === false && !app.sfx.muted);
+  press("b");
+  check("B restarts the music", app.music.playing === true && !app.sfx.muted);
   press("m");
   check("mute again", app.sfx.muted);
+  check("mute stops the music", app.music.playing === false);
 
   // 4. click the leading car: panel, card, live screen
   const lead = model.ranked()[0];

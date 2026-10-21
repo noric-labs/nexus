@@ -10,3 +10,4 @@ session_serialization false  // the wall is regenerated, never resurrected
 pane_viewport_serialization false
 copy_on_select false
 on_force_close "quit"
+web_sharing "on"             // the browser wall (scripts/wall-web.sh, D-039) may attach

@@ -94,6 +94,33 @@ uv run wall-pager --session nexus-wall --scoreboard http://<scoreboard>:8080 --o
 objects. A single page can also be opened on its own with
 `zellij --config config.kdl -n out/page-03.kdl`.
 
+## In a browser (zellij web, D-039)
+
+```sh
+scripts/wall-web.sh start            # from the repo root; or: scripts/host-up.sh --web-wall
+```
+
+This command does three things:
+1. It starts `nexus-wall` headless from `out/wall.kdl` with
+   `zellij attach --create-background`. Pass `--layout F` to use another layout. A running
+   `nexus-wall` is reused.
+2. It starts `zellij web` daemonized on 127.0.0.1:8082.
+3. It prints `http://127.0.0.1:8082/nexus-wall` and a **read-only** login token once.
+
+Open the URL and paste the token at the login prompt. The token can only watch: keys and
+mouse input do not reach the lanes.
+- `wall-web.sh token` mints another token.
+- `wall-web.sh status` shows the server, the session and the token names.
+- `wall-web.sh stop`, which `host-down.sh` also runs, revokes the tokens it minted and
+  stops the server and the session. It stops only what `start` started.
+
+The browser can attach because `config.kdl` sets `web_sharing "on"`. That also makes a wall
+started from a terminal with this config shareable while the web server is up. With the
+web wall running, attach a terminal with `zellij attach nexus-wall`. Do not use the
+kill-and-start line under "Run on the Mac", because it kills the session the browser is
+watching. `wall-pager` works unchanged. The page uses a 12 px font, so zoom the browser
+out (Cmd -) until an 8x8 page fits.
+
 ## Local demo
 
 ```sh

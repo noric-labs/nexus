@@ -78,9 +78,16 @@ def goal_prompt():
     override = env.get("NEXUS_GOAL_PROMPT")
     if override:
         return override
-    # Release builds share the game's prompt: brogue-rel -> brogue.md.
+    # NEXUS_PROMPT_FILE (lane/agents.json games[game].prompt, relative to prompts/), else
+    # the game's prompt; release builds share it: brogue-rel -> brogue.md.
     base = GAME[:-4] if GAME.endswith("-rel") else GAME
-    return read_prompt(GAME) or read_prompt(base) or read_prompt("default")
+    pf = env.get("NEXUS_PROMPT_FILE", "")
+    text = (read_prompt(pf[:-3] if pf.endswith(".md") else pf) if pf else None) \
+        or read_prompt(GAME) or read_prompt(base) or read_prompt("default")
+    # NEXUS_GOAL (agents.json games[game].goal) is added to the game prompt, not a replacement:
+    # the prompt carries the controls.
+    goal = env.get("NEXUS_GOAL", "").strip()
+    return f"{text}\n\nGoal for this lane: {goal}" if goal else text
 
 
 def pi_cmd():
@@ -193,7 +200,9 @@ def main():
     goal = goal_prompt()
     backoff = 0.0
     restarts = 0
-    log(f"lane={env.get('NEXUS_LANE_ID', '')} game={GAME} style={STYLE} model={PROVIDER}/{MODEL} stats={STATS}")
+    log(f"lane={env.get('NEXUS_LANE_ID', '')} game={GAME} profile={env.get('NEXUS_PROFILE', '-')} "
+        f"style={STYLE} model={PROVIDER}/{MODEL} interval={env.get('NEXUS_ACTION_INTERVAL_MS', '')}ms "
+        f"prompt={env.get('NEXUS_PROMPT_FILE') or '-'} keys={env.get('NEXUS_ALLOWED_KEYS') or '-'} stats={STATS}")
     while not stop.is_set() and time_left() and not capped():
         pi = Pi()
         log(f"pi started pid={pi.p.pid} (restart #{restarts})")

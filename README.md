@@ -1,12 +1,15 @@
 # nexus
 
+<a href="https://minimal.dev"><img src="docs/assets/built-with-minimal.svg" alt="Built with Minimal"></a>
+
 The Torment Nexus is a parallel software torment rig.
 
 - **Lanes:** Minimal sandboxes, each running one terminal game.
 - **Agent:** a [pi](https://github.com/earendil-works/pi) agent plays each game, with
-  inference from Cloudflare Workers AI via the host broker.
+  inference from Cloudflare Workers AI via the host broker, or a local LM Studio model.
+  24 lanes by default: 23 Workers AI + 1 local (D-041).
 - **Faults:** each lane runs under one fault-injection profile.
-- **Scoreboard:** counts failures per lane and shows them as a retro pixel-arcade race in
+- **Scoreboard:** counts failures per lane and shows them as a neon anti-grav pixel race in
   the browser.
 - **Wall:** a zellij wall on the host shows every lane's live terminal.
 
