@@ -1,0 +1,47 @@
+# nexus-lane: one Torment Nexus lane (game x fault x pi agent x seed).
+#
+# Stack after `broker`:  min session activate <nexus checkout> --loadout broker --loadout nexus-lane ...
+# broker supplies the credential proxy at 100.64.255.254:8899; this loadout installs pi and
+# points it at the broker's Workers AI route. Every NEXUS_* var inherits from the host env,
+# so the launcher sets them per lane:  NEXUS_LANE_ID=l-001 NEXUS_GAME=greed min session activate ...
+# See ../README.md for the full host commands.
+description = "Torment Nexus lane: pi agent (game.ts tools) + tmux, wired to the broker's Workers AI route"
+
+packages = ["node", "tmux", "python"]
+
+follow_symlinks = false
+
+patches = [
+  # Optional vendored pi (built by vendor-pi.sh). Without it, on_activate npm-installs pi.
+  { dest = ".cache/nexus-lane/pi.tgz", source = "$LOADOUT_ROOT/vendor/pi.tgz" },
+]
+
+[vars]
+NEXUS_LANE_ID        = { inherit = true, default = "l-000" }
+NEXUS_GAME           = { inherit = true, default = "greed" }
+NEXUS_FAULT          = { inherit = true, default = "none" }
+NEXUS_SEED           = { inherit = true, default = "1" }
+NEXUS_MODEL          = { inherit = true, default = "@cf/qwen/qwen3-30b-a3b-fp8" }
+NEXUS_SCOREBOARD_URL = { inherit = true, default = "http://scoreboard.min.internal:8080" }
+# The contract's example is /out, but the box root is read-only; the session home is writable.
+NEXUS_OUT            = { inherit = true, default = "/home/out" }
+# Where the nexus checkout lands in the session (activate with the repo as PATH).
+NEXUS_LANE_DIR       = { inherit = true, default = "/workbench/lane" }
+
+# Agent: pi -> broker -> Cloudflare Workers AI. Boxes send placeholder auth.
+NEXUS_INFERENCE_URL      = { inherit = true, default = "http://100.64.255.254:8899/workers-ai/v1" }
+NEXUS_ACTION_INTERVAL_MS = { inherit = true, default = "5000" }
+NEXUS_KEEP_TURNS         = { inherit = true, default = "3" }
+NEXUS_MAX_TURNS          = { inherit = true, default = "0" }
+NEXUS_MAX_TOKENS         = { inherit = true, default = "0" }
+NEXUS_THINKING           = { inherit = true, default = "low" }
+NEXUS_PI_VERSION         = { inherit = true, default = "1.3.0" }
+NEXUS_PI_PREFIX          = "/home/.local/share/nexus-pi"
+PI_CODING_AGENT_DIR      = "/home/.pi/nexus-agent"
+PI_OFFLINE               = "1"
+PI_SKIP_VERSION_CHECK    = "1"
+PI_TELEMETRY             = "0"
+
+[[lifecycle_hooks]]
+description = "nexus-lane: install pi, render models.json for the broker"
+on_activate = { type = "external", value = "./hooks/on-activate.sh", timeout = 240 }

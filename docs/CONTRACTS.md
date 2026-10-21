@@ -39,7 +39,7 @@ The launcher reads these environment variables:
 | `NEXUS_SEED` | `12345` (u64; used for both the game and the fault RNG). Games with narrower seeds get a reduced value: frotz `-s` takes an int where 0 means "use the clock", so it gets `seed % 2147483646 + 1`. |
 | `NEXUS_MODEL` | `@cf/qwen/qwen3-30b-a3b-fp8` |
 | `NEXUS_SCOREBOARD_URL` | `http://scoreboard.min.internal:8080` |
-| `NEXUS_OUT` | `/out` (the lane writes its artifacts here) |
+| `NEXUS_OUT` | `/home/out` (the lane writes its artifacts here; the box root is read-only) |
 
 - The game runs in tmux session `game` at a fixed size: 80x24, or 100x34 for Brogue. Below
   100x34, Brogue only shows a resize prompt.
@@ -149,3 +149,17 @@ score(lane, heat) = Σ weight[type] × 0.5^(n−1)
   `skills.cc`, `enum.h` and sqlite. Treat them as baseline stack hashes that score 0.
 - Put `llvm-symbolizer` on PATH, or set `ASAN_SYMBOLIZER_PATH`, so that frames symbolize to
   `func@file` for `stack_hash`.
+
+## Agent ↔ harness
+
+- **Keys:** `nexus-lane keys "<keys>"` takes literal text plus named keys: `<Enter>`, `<Esc>`,
+  `<Tab>`, `<BS>`, `<Space>`, the arrows `<Up>` `<Down>` `<Left>` `<Right>`, and `<C-x>` for
+  Ctrl. The grammar is `lane/game.ts`.
+- **Screen:** `nexus-lane screen` prints plain screen text. The cursor is read from tmux.
+- **Stats:** the agent writes `$NEXUS_OUT/agent/stats.json`
+  (`turn, tokens_in, tokens_out, actions, keys_sent, capped`). Heartbeats copy
+  `turn` and the token counts from it.
+- **Errors:** agent errors are appended to `$NEXUS_OUT/agent/events.ndjson`. The harness
+  forwards them as `agent_error`.
+- **Model endpoint:** pi uses `lane/models.json` (provider `nexus`), base URL
+  `http://100.64.255.254:8899/workers-ai/v1` (the broker). Tests use `lane/mock_openai.py`.

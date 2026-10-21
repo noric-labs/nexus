@@ -1,3 +1,6 @@
 *.db
 *.db-*
 /scoreboard/scoreboard
+lane/loadout/vendor/
+__pycache__/
+.venv/
