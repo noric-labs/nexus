@@ -6,6 +6,15 @@ Commits are in the git history; the research is in the
 
 ## 2026-10-21
 
+### D-024 Race UI: canvas pixel art, no build step, no external assets
+- **Format:** plain ES modules embedded in the Go binary, drawn on one 960x540 canvas
+  scaled 2x for 1920x1080.
+- **Font:** a hand-drawn bitmap font, so there's no third-party licence to track.
+- **Demo:** `scoreboard/tools/fake_lanes.py` drives it with fake lanes.
+- **Verification:** headless only (40/40 checks plus screenshots in `docs/img/`).
+- **Still unchecked:** real-browser rendering, WebAudio and SSE reconnect. These need the
+  user's second display.
+
 ### D-023 New fault kinds and the visual detector are verified in a 6-lane mock run
 A 3-minute mock-model slice (`slice-new` task) with these lanes:
 
