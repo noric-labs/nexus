@@ -5,6 +5,7 @@
 #
 #   scripts/host-up.sh [--dry-run] [-n N] [--lanes FILE] [--live] [--heat 15m] [--pit 1m]
 #                      [--port 8080] [--network own_ip|host_ip] [--via exec|run]
+#                      [--egress open|strict]
 #
 #   --dry-run   print every command (min, uv, ...) and run none of them
 #   -n N        start the first N lanes of the lanes file (default 3)
@@ -15,6 +16,9 @@
 #   --network   own_ip (default): every box has its own address, lanes may reach only the
 #               scoreboard (+ the broker with --live). host_ip: boxes share the host network,
 #               no isolation, egress flags are not passed (a host_ip box does not enforce them).
+#   --egress    open (default for now): own_ip boxes get --allow-subnets 0.0.0.0/0, i.e. all
+#               internet egress (go modules, npm, ...). strict: only the named hosts below.
+#               Neither reaches the host alias 100.64.255.254 from own_ip (gominimal/inbox#1153).
 #   --via       exec (default): start scripts/scoreboard.sh and scripts/lane.sh in the session's
 #               own box with `min session exec <s> 'python3 scripts/detach.py ...'`.
 #               run: `min session run <s> <task>`, kept in the background on this machine.
@@ -42,7 +46,7 @@ set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 STATE=$ROOT/.build/host
 DRY=0 N=3 LANES_FILE=$ROOT/scripts/lanes.txt LIVE=0 HEAT=15m PIT=1m PORT=8080
-NET=own_ip VIA=exec
+NET=own_ip VIA=exec EGRESS=open
 SB=${NEXUS_SB_SESSION:-scoreboard}
 PREFIX=${NEXUS_LANE_PREFIX:-}
 MODEL=${NEXUS_MODEL:-@cf/qwen/qwen3-30b-a3b-fp8}
@@ -62,6 +66,7 @@ while [ $# -gt 0 ]; do
         --port) PORT=$2; shift ;;
         --network) NET=$2; shift ;;
         --via) VIA=$2; shift ;;
+        --egress) EGRESS=$2; shift ;;
         -h|--help) sed -n '2,/^set -euo/p' "$0" | sed '$d; s/^# \{0,1\}//'; exit 0 ;;
         *) echo "host-up: unknown argument $1" >&2; exit 2 ;;
     esac
@@ -107,6 +112,7 @@ wait_for() {  # wait_for <seconds> <description> <command...>
 
 case $NET in own_ip|host_ip) ;; *) die "--network must be own_ip or host_ip" ;; esac
 case $VIA in exec|run) ;; *) die "--via must be exec or run" ;; esac
+case $EGRESS in open|strict) ;; *) die "--egress must be open or strict" ;; esac
 [[ $N =~ ^[0-9]+$ ]] && [ "$N" -ge 1 ] || die "-n needs a positive number"
 if [ "$VIA" = run ] && [ "$NET" = own_ip ]; then
     die "--via run needs --network host_ip: a task in an own_ip session runs in a second box that
@@ -181,7 +187,11 @@ sb_flags=(--name "$SB" --no-loadouts --no-prompt --network "$NET")
 if [ "$NET" = own_ip ]; then
     # Static ingress so lane boxes can connect to :8080; egress only for `go build`.
     sb_flags+=(--ingress 8080:8080)
-    for h in $SB_HOSTS; do sb_flags+=(--allow-dns-hosts "$h"); done
+    if [ "$EGRESS" = open ]; then
+        sb_flags+=(--allow-subnets 0.0.0.0/0)
+    else
+        for h in $SB_HOSTS; do sb_flags+=(--allow-dns-hosts "$h"); done
+    fi
 fi
 printf '+ min session activate'; printf ' %q' "${sb_flags[@]}" "$ROOT"; echo
 if [ "$DRY" = 0 ]; then
@@ -235,9 +245,14 @@ say "race UI: http://localhost:$PORT"
 lane_flags=(--no-prompt --network "$NET" --loadout nexus-lane)
 [ "$LIVE" = 1 ] && lane_flags+=(--loadout broker)
 if [ "$NET" = own_ip ]; then
-    lane_flags+=(--allow-dns-hosts "$SB_HOST")
+    if [ "$EGRESS" = open ]; then
+        # All internet plus the in-VM plane (scoreboard.min.internal is in 100.64.0.0/16).
+        lane_flags+=(--allow-subnets 0.0.0.0/0)
+    else
+        lane_flags+=(--allow-dns-hosts "$SB_HOST")
+        [ "$NPM" = 1 ] && lane_flags+=(--allow-dns-hosts registry.npmjs.org)
+    fi
     [ "$LIVE" = 1 ] && lane_flags+=(--allow-subnets "$BROKER_SUBNET")
-    [ "$NPM" = 1 ] && lane_flags+=(--allow-dns-hosts registry.npmjs.org)
 fi
 MOCK=$((1 - LIVE))
 first=1
@@ -263,7 +278,7 @@ compose into the session; use --via run --network host_ip (task packages do carr
     fi
     if ! wait_for 20 "$s to reach $SB_URL" probe "$s" "curl -sf -m 3 -o /dev/null $SB_URL/api/state"; then
         min session policy "$s" >&2 || true
-        die "$s cannot reach $SB_URL (egress: --allow-dns-hosts $SB_HOST; see the policy above)"
+        die "$s cannot reach $SB_URL (egress mode: $EGRESS; check with: min session policy $s)"
     fi
     if [ "$VIA" = exec ]; then
         rexec "$s" "cd /workbench && python3 scripts/detach.py --log \$HOME/.nexus/lane.log -- bash scripts/lane.sh"

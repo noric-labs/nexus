@@ -6,6 +6,17 @@ Commits are in the git history; the research is in the
 
 ## 2026-10-21
 
+### D-033 Open egress by default to get started (`host-up.sh --egress open`)
+**Cause of the last "hang":** the scoreboard's `go build` failed to fetch modules under
+DNS-host allows. Minimal's go sets `GOPROXY=…|direct`, so Go reaches hosts that can't be
+listed up front. host-up then waited silently.
+**Decision:** for now, own_ip boxes get `--allow-subnets 0.0.0.0/0`, all internet plus the
+in-VM plane. `--egress strict` keeps the per-host lists.
+**Long term:** least privilege through egress presets (gominimal/inbox#1154), or a
+packaged scoreboard binary that needs no egress.
+**Still true:** own_ip boxes can't reach the host broker (#1153), so live lanes need the
+D-030 gateway.
+
 ### D-032 Launch jobs with `scripts/detach.py`; pi comes from the `pi-next` package
 **Hang, part 2.** The D-031 brace form still hung on the Mac. `setsid nohup … &` only
 redirects fds 0–2, so the job still inherits any other fd the exec relay passes down, and
