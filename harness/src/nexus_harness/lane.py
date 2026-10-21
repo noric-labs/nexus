@@ -339,7 +339,8 @@ class Lane:
         wd = HangWatchdog(hang_secs, self.env.hang_min_keys)
         wd.reset(time.time(), self._keys())
         san = SanitizerWatcher(run_dir) if game.sanitizer else None
-        vis = (VisualDetector(game.status_regex, game.status_secs, self.env.blank_secs)
+        vis = (VisualDetector(game.status_regex, game.status_secs, self.env.blank_secs,
+                              ignore=game.visual_ignore)
                if self.env.visual else None)
         if vis:
             vis.reset(time.time())

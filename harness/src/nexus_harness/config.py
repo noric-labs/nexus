@@ -99,6 +99,9 @@ class Game:
     # (Brogue "Depth:", DCSS "Health:"); flagged when it has been missing for status_secs.
     status_regex: str | None = None
     status_secs: float = 30.0
+    # Visual conditions that are normal for this game (e.g. dfrotz echoes raw escape
+    # bytes for arrow keys, which would read as bad-cells).
+    visual_ignore: frozenset[str] = frozenset()
 
     def render(self, seed: int, stubs_dir: Path) -> tuple[list[str], str | None]:
         vars_ = {"seed": str(seed), "seed32": str(seed32(seed)), "stubs": str(stubs_dir),
@@ -125,7 +128,8 @@ def load_games(path: Path) -> dict[str, Game]:
             baseline_hashes=set(g.get("baseline_hashes", [])),
             ok_exit_codes=tuple(g.get("ok_exit_codes", (0,))),
             hang_secs=g.get("hang_secs"), status_regex=g.get("status_regex") or None,
-            status_secs=float(g.get("status_secs", 30.0)))
+            status_secs=float(g.get("status_secs", 30.0)),
+            visual_ignore=frozenset(g.get("visual_ignore", [])))
     return games
 
 

@@ -312,7 +312,8 @@ class VisualDetector:
     timer."""
 
     def __init__(self, status_regex: str | None = None, status_secs: float = 30.0,
-                 blank_secs: float = 2.0):
+                 blank_secs: float = 2.0, ignore: frozenset[str] = frozenset()):
+        self.ignore = ignore
         self.status_re = re.compile(status_regex) if status_regex else None
         self.status_secs = status_secs
         self.blank_secs = blank_secs
@@ -325,7 +326,7 @@ class VisualDetector:
         self.status_seen_at: float | None = None
 
     def _hit(self, hits: list[VisualHit], cond: str, report: str) -> None:
-        if cond not in self.reported:
+        if cond not in self.reported and cond not in self.ignore:
             self.reported.add(cond)
             hits.append(VisualHit(cond, report))
 

@@ -141,3 +141,10 @@ def test_glitch_stub_through_tmux(tmp_path):
         assert seen == [STATUS_MISSING, BAD_CELLS, BLANK_SCREEN]
     finally:
         t.run("kill-server", check=False)
+
+
+def test_visual_ignore_suppresses_condition():
+    from nexus_harness.detectors import VisualDetector
+    frame = {"cols": 80, "rows": 24, "cursor": [0, 0], "lines": [">\x1b[B"] + [""] * 23}
+    assert VisualDetector().observe(1.0, frame)
+    assert not VisualDetector(ignore=frozenset({"bad-cells"})).observe(1.0, frame)

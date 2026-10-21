@@ -12,6 +12,8 @@
 command = ["dfrotz", "-m", "-w", "80", "-h", "24", "-s", "{seed32}", "/usr/share/zork/zork1.z3"]
 version = "2.55"
 size = [80, 24]
+# dfrotz is line-oriented and echoes arrow-key escape bytes verbatim.
+visual_ignore = ["bad-cells"]
 
 [games.brogue]
 command = ["brogue-ce-asan", "-t", "-s", "{seed32}", "-n"]
