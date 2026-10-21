@@ -6,13 +6,21 @@ Commits are in the git history; the research is in the
 
 ## 2026-10-21
 
-### D-041 24 lanes by default: 23 Workers AI + 1 local model; Claude profiles wired but parked
+### D-041 24 lanes by default, all on Workers AI; Claude and local-model profiles wired but parked
 **Decision:** `host-up.sh` now starts `scripts/lanes-24.txt` with `-n 24` by default:
 - l-001..l-012: the 12-lane set (6 qwen3, 6 GLM-4.7-Flash).
 - l-013..l-023: 11 more Workers AI lanes. 4 `thinker` (DeepSeek, at its
   `max_concurrent_lanes`) on Zork, Brogue, Greed and DCSS; 2 `glm53` on Zork and DCSS;
   2 `fast` (qwen3) and 3 `glm-flash` on the real-time games.
-- l-024: 1 `local` (`gemma-4-26b-a4b-it-qat-mlx` in LM Studio on the Mac).
+- l-024: 1 more `fast` (qwen3).
+
+The default is all Workers AI. The `local` profile (`gemma-4-26b-a4b-it-qat-mlx` in LM
+Studio on the Mac) played l-024 in a live test and stays defined for opt-in use.
+
+Every lane runs one fault its game is sensitive to: 10 profiles across the 24 lanes, with
+the lanes-16 rules (malloc only on non-ASan builds, so none on DCSS; no `winch-storm` on
+Brogue). The first cut copied the no-faults watch set, so the tower showed `none` for every
+lane and every hull had the same colour. `--no-faults` still strips them.
 
 The first version had 6 `opus-fast` (Claude Opus 5.5, fast mode) and 5 `haiku` (Claude
 Haiku 5.5) lanes in place of l-013..l-023. They were swapped for Workers AI because the

@@ -6,8 +6,8 @@ The Torment Nexus is a parallel software torment rig.
 
 - **Lanes:** Minimal sandboxes, each running one terminal game.
 - **Agent:** a [pi](https://github.com/earendil-works/pi) agent plays each game, with
-  inference from Cloudflare Workers AI via the host broker, or a local LM Studio model.
-  24 lanes by default: 23 Workers AI + 1 local (D-041).
+  inference from Cloudflare Workers AI via the host broker (24 lanes by default, D-041).
+  Profiles for Claude and a local LM Studio model are available opt-in.
 - **Faults:** each lane runs under one fault-injection profile.
 - **Scoreboard:** counts failures per lane and shows them as a neon anti-grav pixel race in
   the browser.
