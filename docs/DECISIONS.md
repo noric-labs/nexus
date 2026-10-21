@@ -6,10 +6,21 @@ Commits are in the git history; the research is in the
 
 ## 2026-10-21
 
+### D-020 Run the full phase A probe (user-approved, up to about $25)
+**Scope:** all 4 models.
+- Ramp: 60 → 360 requests/min, 5 min per step.
+- Modes: A1 (each model alone), then A2 (all at once).
+- Hard cap: 45,000 requests.
+- The stop rule (429 > 1% or p95 > 5 s) ends each model's ramp early.
+
+**Why all 4:** only Gemma makes valid tool calls today (D-016), but rate limits and
+latency still apply to all of them, and the recovery shim may bring the other three back.
+**Output:** the measured ceiling sets the lane count (PLAN, scale test).
+
 ### D-019 Overnight autonomy: no large live inference spend
 Work continues unattended overnight. Live Workers AI runs are limited to small validation
-slices (under about $0.25 each). The full phase A probe (about $25 and 2.2 h) waits for an
-explicit go-ahead.
+slices (under about $0.25 each), except for the phase A probe, which the user approved
+(D-020).
 
 ### D-018 Add Bastet, nSnake and Pacman4console
 These are requested by the user. All three are real-time terminal games, so they mainly
