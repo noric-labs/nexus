@@ -73,7 +73,7 @@ slot stops the attach client.
 cd wall
 uv run wall-gen --scoreboard http://<scoreboard>:8080 --out out
 zellij delete-session nexus-wall 2>/dev/null
-zellij --config config.kdl -s nexus-wall -n out/wall.kdl                    # in the fullscreen wall terminal
+zellij --config config.kdl -s nexus-wall -n out/wall.kdl                    # in the fullscreen wall terminal, not inside zellij
 uv run wall-pager --session nexus-wall --scoreboard http://<scoreboard>:8080 --out out   # in any other terminal
 ```
 
@@ -128,3 +128,12 @@ is 2.5x5 points.
   at least 656x208 for the 8x8 pages and 612x216 for the 6x6 pages. If either is short,
   shrink the font slightly. zellij splits the extra space between the panes, and tmux fills
   the unused area with `·`.
+
+## Troubleshooting
+
+- **A plain shell instead of the wall.** You started it inside an existing zellij session,
+  or reattached to an old `nexus-wall` session. Run
+  `zellij kill-session nexus-wall; zellij delete-session nexus-wall --force` first, from a
+  terminal that is not inside zellij (`$ZELLIJ` unset).
+- **"There is no active session!" and an immediate exit.** You used `--layout` instead of
+  `-n`. In zellij 0.45, `--layout` loads into an existing session.

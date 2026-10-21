@@ -319,8 +319,9 @@ Up: scoreboard session '$SB' + ${#LANES[@]} lane session(s) ($NET, via $VIA, $([
   lane logs    min session exec ${SESSIONS[1]} 'tail -n 40 \$HOME/.nexus/lane.log \$HOME/out/harness.log \$HOME/out/agent/agent.log'
 
 Wall (wall/terminals/ has Ghostty, kitty and WezTerm configs for the 4pt grid):
-  # in the fullscreen wall terminal
-  cd $ROOT/wall && zellij delete-session nexus-wall 2>/dev/null; zellij --config config.kdl -s nexus-wall -n out/wall.kdl
+  # in a fullscreen terminal that is NOT already inside zellij (use -n, not --layout:
+  # zellij 0.45 --layout targets an existing session and exits with "no active session")
+  cd $ROOT/wall && zellij kill-session nexus-wall 2>/dev/null; zellij delete-session nexus-wall --force 2>/dev/null; zellij --config config.kdl -s nexus-wall -n out/wall.kdl
   # in any other terminal
   cd $ROOT/wall && uv run wall-pager --session nexus-wall --scoreboard http://localhost:$PORT --out out
 
