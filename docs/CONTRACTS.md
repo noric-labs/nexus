@@ -36,12 +36,16 @@ The launcher reads these environment variables:
 | `NEXUS_LANE_ID` | `l-042` |
 | `NEXUS_GAME` | `brogue` \| `frotz-zork1` \| `greed` \| `dcss` |
 | `NEXUS_FAULT` | a fault profile name (below) |
-| `NEXUS_SEED` | `12345` (u64; used for both the game and the fault RNG) |
+| `NEXUS_SEED` | `12345` (u64; used for both the game and the fault RNG). Games with narrower seeds get a reduced value: frotz `-s` takes an int where 0 means "use the clock", so it gets `seed % 2147483646 + 1`. |
 | `NEXUS_MODEL` | `@cf/qwen/qwen3-30b-a3b-fp8` |
 | `NEXUS_SCOREBOARD_URL` | `http://scoreboard.min.internal:8080` |
 | `NEXUS_OUT` | `/out` (the lane writes its artifacts here) |
 
-- The game runs in tmux session `game` at a fixed size: 80x24, or 100x34 for Brogue.
+- The game runs in tmux session `game` at a fixed size: 80x24, or 100x34 for Brogue. Below
+  100x34, Brogue only shows a resize prompt.
+- Brogue writes saves, recordings and scores to its working directory, so it runs from
+  `$HOME/brogue`.
+- Curses frotz waits for one more key after `quit`.
 - tmux is started with `-f lane/tmux.conf`, which contains `set -g window-size manual` and
   `set -g default-size 80x24`, so viewers attaching never resize the game.
 - The pi agent drives the game through `tmux send-keys` and `tmux capture-pane`.
@@ -59,7 +63,7 @@ Each profile is a launcher plugin that wraps the game command:
 | `strace-eintr-read` | `-e inject=read:error=EINTR:when=N+7` |
 | `winch-storm` | a seeded SIGWINCH plus tmux resize schedule every 50–500 ms |
 | `rlimit-tight` | `prlimit --as=268435456 --nofile=16 --fsize=65536 --stack=262144 --` |
-| `time-warp` | `faketime "@2038-01-19 03:14:00 x60"` |
+| `time-warp` | `faketime -f "@2038-01-19 03:14:00 x60"` |
 | `keystorm` | every 20 agent keys, inject one hostile byte sequence (radamsa-mutated pool) |
 
 ## Event schema v1 (lane → scoreboard)
