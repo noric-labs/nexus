@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Torment Nexus Scoreboard</title>
+<style>
+  :root { --bg:#fff; --fg:#111; --muted:#666; --line:#ddd; --hot:#c0392b; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#111; --fg:#eee; --muted:#999; --line:#333; --hot:#ff6b5b; } }
+  body { background:var(--bg); color:var(--fg); font:14px/1.4 ui-monospace, Menlo, monospace; margin:16px; }
+  h1 { font-size:18px; margin:0 0 4px; } .muted { color:var(--muted); }
+  table { border-collapse:collapse; width:100%; margin:8px 0 20px; }
+  th, td { text-align:left; padding:3px 8px; border-bottom:1px solid var(--line); white-space:nowrap; }
+  td.n, th.n { text-align:right; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(320px,1fr)); gap:16px; }
+  #ticker { list-style:none; padding:0; max-height:12em; overflow:auto; }
+  #ticker li { color:var(--hot); }
+  .wrap { overflow-x:auto; }
+</style>
+</head>
+<body>
+<h1>Torment Nexus</h1>
+<div id="heat" class="muted">connecting…</div>
+<ul id="ticker"></ul>
+<div class="wrap"><table id="lanes"><thead><tr>
+  <th class="n">#</th><th>lane</th><th>game</th><th>fault</th><th>model</th><th>status</th>
+  <th class="n">score</th><th class="n">laps</th><th class="n">hits</th><th class="n">clusters</th>
+  <th>last failure</th><th class="n">season</th></tr></thead><tbody></tbody></table></div>
+<div class="grid">
+  <div><h2>Constructors</h2><table id="constructors"><tbody></tbody></table></div>
+  <div><h2>Games</h2><table id="games"><tbody></tbody></table></div>
+  <div><h2>Season</h2><table id="season"><tbody></tbody></table></div>
+</div>
+<script>
+const lanes = new Map(); let state = null;
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const pts = x => (Math.round((x || 0) * 100) / 100).toString();
+function render() {
+  if (!state) return;
+  const h = state.heat;
+  document.getElementById("heat").textContent =
+    `${h.id} · ${h.phase.toUpperCase()} · ${Math.ceil(h.remaining_ms / 1000)}s left · next ${h.next_id}`;
+  const rows = [...lanes.values()].sort((a, b) => (a.pos || 1e9) - (b.pos || 1e9) || a.lane_id.localeCompare(b.lane_id));
+  document.querySelector("#lanes tbody").innerHTML = rows.map(l => `<tr>
+    <td class="n">${l.pos || ""}</td><td>${esc(l.lane_id)}</td><td>${esc(l.game)}</td><td>${esc(l.fault)}</td>
+    <td>${esc(l.model)}</td><td>${esc(l.status)}</td><td class="n">${pts(l.score)}</td>
+    <td class="n">${l.laps}</td><td class="n">${l.hits}</td><td class="n">${l.clusters}</td>
+    <td>${l.last_failure ? esc(l.last_failure.type + " " + (l.last_failure.detail || "")) : ""}</td>
+    <td class="n">${l.season_points}</td></tr>`).join("");
+  const grp = (id, rs) => document.querySelector(`#${id} tbody`).innerHTML =
+    `<tr><th>#</th><th>name</th><th class="n">heat</th><th class="n">lanes</th><th class="n">season pts</th></tr>` +
+    rs.map(r => `<tr><td>${r.pos}</td><td>${esc(r.key)}</td><td class="n">${pts(r.score)}</td><td class="n">${r.lanes}</td><td class="n">${r.season_points}</td></tr>`).join("");
+  grp("constructors", state.standings.constructors);
+  grp("games", state.standings.games);
+  document.querySelector("#season tbody").innerHTML =
+    `<tr><th>#</th><th>lane</th><th class="n">pts</th><th class="n">wins</th><th class="n">podiums</th></tr>` +
+    state.standings.season.map(r => `<tr><td>${r.pos}</td><td>${esc(r.lane_id)}</td><td class="n">${r.points}</td><td class="n">${r.wins}</td><td class="n">${r.podiums}</td></tr>`).join("");
+}
+function tick(text) {
+  const li = document.createElement("li"); li.textContent = text;
+  const ul = document.getElementById("ticker"); ul.prepend(li);
+  while (ul.children.length > 20) ul.lastChild.remove();
+}
+const es = new EventSource("stream");
+es.addEventListener("state", e => {
+  const s = JSON.parse(e.data);
+  if (s.full) lanes.clear();
+  for (const l of s.lanes) lanes.set(l.lane_id, l);
+  // positions/scores of untouched lanes come from the full score map
+  for (const l of lanes.values()) { l.score = s.scores[l.lane_id] ?? 0; }
+  for (const r of s.standings.lanes) { const l = lanes.get(r.lane_id); if (l) l.pos = r.pos; }
+  state = s; render();
+});
+es.addEventListener("ticker", e => tick(JSON.parse(e.data).text));
+es.addEventListener("heat", e => tick(`GREEN FLAG: ${JSON.parse(e.data).id}`));
+es.addEventListener("pit", e => tick(`CHEQUERED FLAG: ${JSON.parse(e.data).heat_id}, pit`));
+setInterval(() => { if (state) { state.heat.remaining_ms = Math.max(0, state.heat.remaining_ms - 1000); render(); } }, 1000);
+</script>
+</body>
+</html>

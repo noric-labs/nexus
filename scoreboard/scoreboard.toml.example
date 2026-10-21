@@ -1,0 +1,18 @@
+# scoreboard.toml — every key is optional; these are the defaults.
+listen = ":8080"
+db = "scoreboard.db"
+heat = "15m"          # race length
+pit = "1m"            # pit between heats (lanes are recycled)
+lap_points = 20       # one lap of the track = 20 points
+state_hz = 4          # max rate of `state` deltas on /stream (capped at 4)
+ring_size = 1024      # SSE replay buffer for Last-Event-ID
+lane_stale = "30s"    # lane status becomes "stale" after this long without events
+failure_log = 200     # failures returned by /api/lanes/{id}
+season_points = [25, 18, 15, 12, 10, 8, 6, 4, 2, 1]
+
+[weights]
+sanitizer = 5
+crash = 3
+hang = 2
+visual = 1
+agent_error = 0
