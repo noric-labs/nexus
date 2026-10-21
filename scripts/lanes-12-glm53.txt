@@ -1,0 +1,17 @@
+# A/B: lanes-12.txt with GLM-4.7-flash swapped for glm-5.3 (6 glm-5.3 + 6 qwen3).
+# All 7 games: 2 lanes each, except DCSS (ASan-only build) and Bastet (the agents rarely
+# get past its menu) with 1. Shown on one wall page:
+#   scripts/host-up.sh --live --one-page -n 12 --lanes scripts/lanes-12-glm53.txt
+# id      game         fault  seed  model
+l-001     frotz-zork1  none   201   @cf/qwen/qwen3-30b-a3b-fp8
+l-002     frotz-zork1  none   202   @cf/zai-org/glm-5.3      
+l-003     brogue-rel   none   203   @cf/zai-org/glm-5.3      
+l-004     brogue-rel   none   204   @cf/qwen/qwen3-30b-a3b-fp8
+l-005     greed        none   205   @cf/qwen/qwen3-30b-a3b-fp8
+l-006     greed        none   206   @cf/zai-org/glm-5.3      
+l-007     nsnake-rel   none   207   @cf/zai-org/glm-5.3      
+l-008     nsnake-rel   none   208   @cf/qwen/qwen3-30b-a3b-fp8
+l-009     pacman-rel   none   209   @cf/qwen/qwen3-30b-a3b-fp8
+l-010     pacman-rel   none   210   @cf/zai-org/glm-5.3      
+l-011     dcss         none   211   @cf/zai-org/glm-5.3      
+l-012     bastet-rel   none   212   @cf/qwen/qwen3-30b-a3b-fp8

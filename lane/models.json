@@ -63,6 +63,92 @@
           }
         },
         {
+          "id": "@cf/zai-org/glm-5.3",
+          "name": "GLM-5.3 (via broker)",
+          "reasoning": false,
+          "input": [
+            "text"
+          ],
+          "contextWindow": 131072,
+          "maxTokens": 4096,
+          "cost": {
+            "input": 1.4,
+            "output": 4.4,
+            "cacheRead": 0,
+            "cacheWrite": 0
+          },
+          "compat": {
+            "supportsStore": false,
+            "supportsDeveloperRole": false,
+            "supportsStrictMode": true,
+            "supportsLongCacheRetention": false,
+            "sendSessionAffinityHeaders": true
+          },
+          "samplingParams": {
+            "chat_template_kwargs": {
+              "enable_thinking": false
+            }
+          }
+        },
+        {
+          "id": "@cf/zai-org/glm-5.3-flash",
+          "name": "GLM-5.3-Flash (via broker)",
+          "reasoning": false,
+          "input": [
+            "text"
+          ],
+          "contextWindow": 131072,
+          "maxTokens": 4096,
+          "cost": {
+            "input": 0.3,
+            "output": 0.6,
+            "cacheRead": 0,
+            "cacheWrite": 0
+          },
+          "compat": {
+            "supportsStore": false,
+            "supportsDeveloperRole": false,
+            "supportsStrictMode": true,
+            "supportsLongCacheRetention": false,
+            "sendSessionAffinityHeaders": true
+          },
+          "samplingParams": {
+            "reasoning_effort": "low",
+            "chat_template_kwargs": {
+              "enable_thinking": false
+            }
+          }
+        },
+        {
+          "id": "@cf/deepseek-ai/deepseek-v4.1-flash",
+          "name": "DeepSeek V4.1 Flash (via broker)",
+          "reasoning": false,
+          "input": [
+            "text"
+          ],
+          "contextWindow": 131072,
+          "maxTokens": 4096,
+          "cost": {
+            "input": 0.35,
+            "output": 0.6,
+            "cacheRead": 0,
+            "cacheWrite": 0
+          },
+          "compat": {
+            "supportsStore": false,
+            "supportsDeveloperRole": false,
+            "supportsStrictMode": true,
+            "supportsLongCacheRetention": false,
+            "sendSessionAffinityHeaders": true
+          },
+          "samplingParams": {
+            "chat_template_kwargs": {
+              "thinking": false,
+              "enable_thinking": false
+            }
+          }
+        },
+        {
           "id": "@cf/google/gemma-4-26b-a4b-it",
           "name": "Gemma 4 26B A4B IT (via broker)",
           "reasoning": false,

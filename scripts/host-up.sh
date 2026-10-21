@@ -205,6 +205,9 @@ fi
 if [ "$LIVE" = 1 ] && [ "$DRY" = 0 ]; then
     # Not `min loadout list | grep -q`: grep exits early, min panics on EPIPE, pipefail fails.
     grep -qw broker <<< "$(min loadout list 2>/dev/null)" || die "--live needs the 'broker' loadout (min loadout list)"
+    # Live lanes reach Workers AI only through the host broker; a dead broker fails every request.
+    curl -fsS -m 5 --noproxy 127.0.0.1 -o /dev/null http://127.0.0.1:8899/health \
+        || die "--live needs the host broker on 127.0.0.1:8899 (start it: ~/code/broker/broker-up.sh)"
 fi
 
 # ---- scoreboard session -----------------------------------------------------------------

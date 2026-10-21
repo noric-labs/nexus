@@ -6,6 +6,36 @@ Commits are in the git history; the research is in the
 
 ## 2026-10-21
 
+### D-037 Stronger models play the reasoning games; DeepSeek flash is capped at ~36 req/min
+**Memory did not help (discarded).** A `note()` notebook plus `KEEP_TURNS=10` gave sensible
+notes but no better scores on qwen3/GLM-4.7, at 2–4x the tokens per call.
+**New models** in `lane/models.json` (costs estimated from Workers AI neurons):
+`glm-5.3`, `glm-5.3-flash`, `deepseek-v4.1-flash`. All make structured tool calls.
+**Rate limits** (`docs/probe-flash-2026-10-21.txt`, scaletest probe, about 2k input tokens):
+- `deepseek-v4.1-flash`: no failures at 30 req/min; 70% 429 "inference request per min rate
+  reached" at 60. Sustains about 36/min.
+- `glm-5.3-flash`: p95 13 s even at 15/min, and it reasons regardless of `enable_thinking`
+  (only `reasoning_effort: "low"` stops it). Too slow to play.
+- `glm-5.3`: 18–240 s per action across 6 lanes, many stalls.
+
+**Races** (`docs/ab-models-2026-10-21.txt`, 10 min each, `scripts/ab-race.sh`):
+
+| Game | qwen3 | deepseek-v4.1-flash | glm-5.3 |
+| --- | --- | --- | --- |
+| Zork | 0 after 360–410 moves | 40 (Maze, about 80 moves) | 49 (Kitchen, 79 moves) |
+| DCSS | – | Dungeon:2 | Dungeon:2 at 5 min |
+| Greed | 185 | 76–134 | 5 |
+| Brogue | depth 1 | depth 1 | depth 1 |
+| nSnake, Pacman, Bastet | 0–63 | 0–17 | 0–8 |
+
+**Decision:** use DeepSeek (or glm-5.3 when speed doesn't matter) for the reasoning games:
+Zork and DCSS. Use qwen3 for the fast or real-time ones (Greed, nSnake, Pacman, Bastet).
+`scripts/lanes-12-mixed.txt` puts DeepSeek on 4 lanes. That is still too many for its limit
+(4–8 429s per lane, 9–19 s per action); 2–3 lanes or per-model pacing (~7 s) would fit.
+Nothing plays Brogue past depth 1 or the real-time games well yet.
+**Also:** the host broker died unnoticed, and a whole race failed with `toolfix: upstream
+unreachable`. `host-up.sh --live` now checks the broker's `/health` first.
+
 ### D-036 The wall blocked every agent key; 1 s pacing; `win` play style
 **Cause of the "stalled" lanes:** `lane/ttyview.py` attached with `tmux attach -r`. In each
 lane that read-only viewer was the only tmux client, and tmux 3.7 resolves a bare

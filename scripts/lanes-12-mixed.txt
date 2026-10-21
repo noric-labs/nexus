@@ -1,0 +1,18 @@
+# Mixed: deepseek-v4.1-flash on the 4 turn-based lanes, qwen3 on the rest (no faults).
+# deepseek-v4.1-flash sustains about 36 req/min on Workers AI (429s at 60/min, probe
+# 2026-10-21), so 4 lanes share it at about 9 req/min each. Each DeepSeek game also has a
+# qwen3 lane for comparison.
+#   scripts/host-up.sh --live --no-faults --one-page -n 12 --lanes scripts/lanes-12-mixed.txt
+# id      game         fault  seed  model
+l-001     frotz-zork1  none   201   @cf/deepseek-ai/deepseek-v4.1-flash
+l-002     frotz-zork1  none   202   @cf/qwen/qwen3-30b-a3b-fp8
+l-003     brogue-rel   none   203   @cf/deepseek-ai/deepseek-v4.1-flash
+l-004     brogue-rel   none   204   @cf/qwen/qwen3-30b-a3b-fp8
+l-005     greed        none   205   @cf/deepseek-ai/deepseek-v4.1-flash
+l-006     greed        none   206   @cf/qwen/qwen3-30b-a3b-fp8
+l-007     nsnake-rel   none   207   @cf/qwen/qwen3-30b-a3b-fp8
+l-008     nsnake-rel   none   208   @cf/qwen/qwen3-30b-a3b-fp8
+l-009     pacman-rel   none   209   @cf/qwen/qwen3-30b-a3b-fp8
+l-010     pacman-rel   none   210   @cf/qwen/qwen3-30b-a3b-fp8
+l-011     dcss         none   211   @cf/deepseek-ai/deepseek-v4.1-flash
+l-012     bastet-rel   none   212   @cf/qwen/qwen3-30b-a3b-fp8

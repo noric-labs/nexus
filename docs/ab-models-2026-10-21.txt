@@ -1,0 +1,104 @@
+# Model A/B races, 2026-10-21 (12 lanes, no faults, win style, wall attached, 10 min)
+# Columns: lane game model elapsed actions s/action input-tokens stalls [429s]; next line = game status line
+
+## glm-5.3-flash vs deepseek-v4.1-flash (scripts/lanes-12-flash.txt)
+===== 5 min
+l-001 frotz-zork1 glm-5.3- el=324s act= 21 terr=0 s/act= 15.4 tok_in=  31475 stalls=0 lasterr=429 {"errors":[{"message":"AiError: AiError: rate 
+l-001 > Kitchen                                          Score: 10       Moves: 61
+l-002 frotz-zork1 deepseek el=322s act=  9 terr=0 s/act= 35.8 tok_in=  17307 stalls=0 lasterr=429 {"errors":[{"message":"AiError: AiError: rate 
+l-002 > Living Room                                      Score: 10       Moves: 16
+l-003 brogue-rel  deepseek el=320s act= 23 terr=0 s/act= 13.9 tok_in=  40630 stalls=0 lasterr=429 {"errors":[{"message":"AiError: AiError: rate 
+l-003   -- Depth: 1 --        Explore        Rest (z)       Search (s)        Menu         Inventory
+l-004 brogue-rel  glm-5.3- el=318s act= 28 terr=0 s/act= 11.4 tok_in=  51988 stalls=0 lasterr=429 {"errors":[{"message":"AiError: AiError: rate 
+l-004   -- Depth: 1 --        Explore        Rest (z)       Search (s)        Menu         Inventory
+l-005 greed       glm-5.3- el=315s act=  7 terr=0 s/act= 45.1 tok_in=  22969 stalls=0 lasterr=429 {"errors":[{"message":"AiError: AiError: rate 
+l-005 Score: 37  2.13%                        Bad move.
+l-006 greed       deepseek el=313s act= 30 terr=0 s/act= 10.5 tok_in=  68709 stalls=0 lasterr=429 {"errors":[{"message":"AiError: AiError: rate 
+l-006 Score: 134  7.71%                       Bad move.
+l-007 nsnake-rel  deepseek el=311s act= 25 terr=0 s/act= 12.5 tok_in=  39721 stalls=0 lasterr=429 {"errors":[{"message":"AiError: AiError: rate 
+l-007 xHi-Score 0                Score 0                   Speed 1                   x
+l-008 nsnake-rel  glm-5.3- el=309s act= 33 terr=0 s/act=  9.4 tok_in=  49366 stalls=0 lasterr=429 {"errors":[{"message":"AiError: AiError: rate 
+l-008 xHi-Score 0                Score 0                   Speed 1                   x
+l-009 pacman-rel  glm-5.3- el=307s act= 10 terr=0 s/act= 30.7 tok_in=  14999 stalls=0 lasterr=429 {"errors":[{"message":"AiError: AiError: rate 
+l-009    Level: 1     Score: 8
+l-010 pacman-rel  deepseek el=305s act=  9 terr=0 s/act= 33.9 tok_in=  14871 stalls=0 lasterr=429 {"errors":[{"message":"AiError: AiError: rate 
+l-010    Level: 1     Score: 17
+l-011 dcss        deepseek el=303s act= 13 terr=0 s/act= 23.3 tok_in=  21191 stalls=0 lasterr=429 {"errors":[{"message":"AiError: AiError: rate 
+l-011  #.#  #.# #........#                 XL:  1 Next: 33%  Place: Dungeon:1
+l-012 bastet-rel  glm-5.3- el=300s act=  5 terr=0 s/act= 60.2 tok_in=  11014 stalls=0 lasterr=429 {"errors":[{"message":"AiError: AiError: rate 
+l-012                         x    View highscores        x             x
+===== 10 min
+l-001 frotz-zork1 glm-5.3- el=625s act= 37 terr=0 s/act= 16.9 tok_in=  53304 stalls=0 lasterr=429 {"errors":[{"message":"AiError: AiError: rate 
+l-001  Reservoir South                                  Score: 40       Moves: 82
+l-002 frotz-zork1 deepseek el=623s act= 32 terr=0 s/act= 19.5 tok_in=  52125 stalls=0 lasterr=429 {"errors":[{"message":"AiError: AiError: rate 
+l-002 > Maintenance Room                                 Score: 40       Moves: 45
+l-003 brogue-rel  deepseek el=620s act= 39 terr=0 s/act= 15.9 tok_in=  75449 stalls=0 lasterr=429 {"errors":[{"message":"AiError: AiError: rate 
+l-003   -- Depth: 1 --        Explore        Rest (z)       Search (s)        Menu         Inventory
+l-004 brogue-rel  glm-5.3- el=618s act= 41 terr=0 s/act= 15.1 tok_in=  75513 stalls=0 lasterr=429 {"errors":[{"message":"AiError: AiError: rate 
+l-004   -- Depth: 1 --        Explore        Rest (z)       Search (s)        Menu         Inventory
+l-005 greed       glm-5.3- el=616s act= 12 terr=0 s/act= 51.4 tok_in=  37155 stalls=2 lasterr=429 {"errors":[{"message":"AiError: AiError: rate 
+l-005 Score: 44  2.53%                        Greed v4.5 - Hit '?' for help.
+l-006 greed       deepseek el=614s act= 51 terr=0 s/act= 12.1 tok_in= 115483 stalls=0 lasterr=429 {"errors":[{"message":"AiError: AiError: rate 
+l-006 Score: 73  4.20%                        Greed v4.5 - Hit '?' for help.
+l-007 nsnake-rel  deepseek el=612s act= 32 terr=0 s/act= 19.1 tok_in=  51193 stalls=0 lasterr=429 {"errors":[{"message":"AiError: AiError: rate 
+l-007 xHi-Score 2                Score 0                   Speed 1                   x
+l-008 nsnake-rel  glm-5.3- el=610s act= 61 terr=0 s/act= 10.0 tok_in=  95205 stalls=0 lasterr=429 {"errors":[{"message":"AiError: AiError: rate 
+l-008 xHi-Score 0                Score 0                   Speed 1                   x
+l-009 pacman-rel  glm-5.3- el=608s act= 27 terr=0 s/act= 22.5 tok_in=  45253 stalls=0 lasterr=429 {"errors":[{"message":"AiError: AiError: rate 
+l-010 pacman-rel  deepseek el=605s act= 24 terr=0 s/act= 25.2 tok_in=  40178 stalls=0 lasterr=429 {"errors":[{"message":"AiError: AiError: rate 
+l-010    Level: 1     Score: 8
+l-011 dcss        deepseek el=603s act= 26 terr=0 s/act= 23.2 tok_in=  42080 stalls=0 lasterr=429 {"errors":[{"message":"AiError: AiError: rate 
+l-011                #.#   #.≈≈≈###.#..    XL:  1 Next: 58%  Place: Dungeon:1
+l-012 bastet-rel  glm-5.3- el=601s act= 16 terr=0 s/act= 37.6 tok_in=  31267 stalls=0 lasterr=429 {"errors":[{"message":"AiError: AiError: rate 
+l-012                         x    View highscores        x             x
+torn down: 0 sessions left
+
+## deepseek-v4.1-flash x4 + qwen3 x8 (scripts/lanes-12-mixed.txt)
+===== 5 min
+l-001 frotz-zork1 deepseek el=325s act= 35 s/act=  9.3 tok_in=  62358 stalls=0 429s=3
+l-001 > Maze                                             Score: 40       Moves: 83
+l-002 frotz-zork1 qwen3-30 el=323s act=183 s/act=  1.8 tok_in= 220702 stalls=2 429s=0
+l-002  Clearing                                         Score: 0        Moves: 183
+l-003 brogue-rel  deepseek el=321s act= 25 s/act= 12.9 tok_in=  41698 stalls=0 429s=6
+l-003   -- Depth: 1 --        Explore        Rest (z)       Search (s)        Menu         Inventory
+l-004 brogue-rel  qwen3-30 el=319s act=178 s/act=  1.8 tok_in= 292749 stalls=1 429s=0
+l-004   -- Depth: 1 --
+l-005 greed       deepseek el=317s act= 28 s/act= 11.3 tok_in=  56191 stalls=0 429s=6
+l-005 Score: 123  7.08%                       Greed v4.5 - Hit '?' for help.
+l-006 greed       qwen3-30 el=314s act=171 s/act=  1.8 tok_in= 480107 stalls=2 429s=0
+l-006 Score: 30  1.73%                        Bad move.
+l-007 nsnake-rel  qwen3-30 el=312s act=182 s/act=  1.7 tok_in= 303885 stalls=1 429s=0
+l-007 x                     o   o  o         o @    o  o   o xErase High Scores     xx
+l-008 nsnake-rel  qwen3-30 el=310s act=227 s/act=  1.4 tok_in= 306481 stalls=1 429s=0
+l-008 xHi-Score 0                Score 0                   Speed 1                   x
+l-009 pacman-rel  qwen3-30 el=308s act=192 s/act=  1.6 tok_in= 256698 stalls=1 429s=0
+l-009    Level: 1     Score: 11
+l-010 pacman-rel  qwen3-30 el=305s act=192 s/act=  1.6 tok_in= 252493 stalls=1 429s=0
+l-010    Level: 1     Score: 29
+l-011 dcss        deepseek el=303s act= 23 s/act= 13.2 tok_in=  35924 stalls=1 429s=5
+l-011 ..~~~..........##.#                  XL:  1 Next: 58%  Place: Dungeon:1
+l-012 bastet-rel  qwen3-30 el=300s act=187 s/act=  1.6 tok_in= 255233 stalls=1 429s=0
+l-012                             x                    x xLevel:      0 x
+===== 10 min
+l-001 frotz-zork1 deepseek el=626s act= 69 s/act=  9.1 tok_in= 118785 stalls=1 429s=4
+l-001 > Forest                                           Score: 30       Moves: 147
+l-002 frotz-zork1 qwen3-30 el=624s act=364 s/act=  1.7 tok_in= 435464 stalls=3 429s=0
+l-002  Forest Path                                      Score: 0        Moves: 364
+l-003 brogue-rel  deepseek el=622s act= 32 s/act= 19.4 tok_in=  54976 stalls=1 429s=8
+l-003   -- Depth: 1 --        Explore        Rest (z)       Search (s)        Menu         Inventory
+l-004 brogue-rel  qwen3-30 el=620s act=305 s/act=  2.0 tok_in= 502681 stalls=3 429s=0
+l-004   -- Depth: 1 --
+l-005 greed       deepseek el=617s act= 56 s/act= 11.0 tok_in= 131203 stalls=0 429s=7
+l-005 Score: 76  4.38%                        Bad move.
+l-006 greed       qwen3-30 el=615s act=311 s/act=  2.0 tok_in= 868183 stalls=4 429s=0
+l-006 Score: 185  10.65%                      Bad move.
+l-007 nsnake-rel  qwen3-30 el=613s act=307 s/act=  2.0 tok_in= 551805 stalls=3 429s=0
+l-008 nsnake-rel  qwen3-30 el=610s act=373 s/act=  1.6 tok_in= 562891 stalls=3 429s=0
+l-009 pacman-rel  qwen3-30 el=608s act=329 s/act=  1.9 tok_in= 456917 stalls=3 429s=0
+l-009    Level: 1     Score: 15
+l-010 pacman-rel  qwen3-30 el=606s act=326 s/act=  1.9 tok_in= 453024 stalls=3 429s=0
+l-011 dcss        deepseek el=604s act= 47 s/act= 12.9 tok_in=  76788 stalls=3 429s=6
+l-011                #.#                   XL:  1 Next: 66%  Place: Dungeon:2
+l-012 bastet-rel  qwen3-30 el=601s act=315 s/act=  1.9 tok_in= 463336 stalls=3 429s=0
+l-012                             x                    x xLevel:      0 x
+torn down: 0 sessions left

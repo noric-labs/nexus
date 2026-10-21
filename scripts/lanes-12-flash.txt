@@ -1,0 +1,15 @@
+# A/B: glm-5.3-flash vs deepseek-v4.1-flash, one lane each per game (lanes-12 games, no faults).
+#   scripts/host-up.sh --live --no-faults --one-page -n 12 --lanes scripts/lanes-12-flash.txt
+# id      game         fault  seed  model
+l-001     frotz-zork1  none   201   @cf/zai-org/glm-5.3-flash
+l-002     frotz-zork1  none   202   @cf/deepseek-ai/deepseek-v4.1-flash
+l-003     brogue-rel   none   203   @cf/deepseek-ai/deepseek-v4.1-flash
+l-004     brogue-rel   none   204   @cf/zai-org/glm-5.3-flash
+l-005     greed        none   205   @cf/zai-org/glm-5.3-flash
+l-006     greed        none   206   @cf/deepseek-ai/deepseek-v4.1-flash
+l-007     nsnake-rel   none   207   @cf/deepseek-ai/deepseek-v4.1-flash
+l-008     nsnake-rel   none   208   @cf/zai-org/glm-5.3-flash
+l-009     pacman-rel   none   209   @cf/zai-org/glm-5.3-flash
+l-010     pacman-rel   none   210   @cf/deepseek-ai/deepseek-v4.1-flash
+l-011     dcss         none   211   @cf/deepseek-ai/deepseek-v4.1-flash
+l-012     bastet-rel   none   212   @cf/zai-org/glm-5.3-flash
