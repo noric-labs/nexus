@@ -6,6 +6,27 @@ Commits are in the git history; the research is in the
 
 ## 2026-10-21
 
+### D-029 First live mixed race: real resize bugs found; qwen3 and GLM preferred
+6 live lanes, 5 min (`slice-mixed`, about $0.25), all four models.
+
+| Lane | Model | Result |
+| --- | --- | --- |
+| bastet, winch-storm | GLM | ASan SEGV in ncurses `wnoutrefresh` via `Bastet::BorderedWindow::RedrawBorder()` (`Ui.cpp:78`): it redraws with stale geometry after a resize. Plus 3 visual. |
+| nsnake-rel, winch-storm | Gemma | 2 distinct SIGABRT clusters in ncurses frames, 1 error_exit, 1 visual |
+| brogue-rel, malloc-20pct | qwen3 | 18 crashes in 2 clusters (61 actions) |
+| brogue-rel, malloc-20pct | Gemma | the same `0c484e81b05e` cluster: hashes are stable across models and runs |
+| frotz, strace-eintr-read | gpt-oss | no failures (54 actions) |
+| greed, rlimit-tight | qwen3 | no failures (60 actions) |
+
+**Gemma:** 6 stall aborts across its two lanes, and only 13 actions in 5 min in the
+Brogue one. That matches its slow p95 tail (D-027). qwen3 and GLM took 43–61 actions in
+the same window.
+
+**Decision:** qwen3 and GLM are the default lane models, gpt-oss is the third, and Gemma
+gets few lanes.
+**Note:** ncurses-namespaced hashes (`ncurses:…`) are keeping the library's crashes
+apart from the games' own, as designed.
+
 ### D-028 All four models play live once the proxy normalises requests
 **Problem:** the live toolfix check found qwen3 and gpt-oss failing with 400 "Bad input"
 after the first turns. Workers AI's schema for those models rejects two things pi sends:
