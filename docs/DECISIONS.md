@@ -6,6 +6,26 @@ Commits are in the git history; the research is in the
 
 ## 2026-10-21
 
+### D-034 First real-session run on the Mac works end to end (2026-10-21)
+`scripts/host-up.sh` on the user's MacBook brought up the scoreboard plus 3 lane
+sessions in VM `default`.
+- Each session is `own_ip` with open egress.
+- Jobs launch through `detach.py`; every `exec` returned.
+- The scoreboard built (go, open egress) and answered within about 10 s, and the
+  forward to `localhost:8080` works.
+
+| Lane | Model | Fault | Result after about 1 min |
+| --- | --- | --- | --- |
+| Brogue | GLM | malloc-20pct | 4 crashes in 4 clusters, score 12 |
+| Zork | qwen3 | winch-storm | running, no failures |
+| Bastet | qwen3 | winch-storm | running, no failures |
+
+All three were on the mock model. `wall-gen` produced the pages.
+
+**Not yet verified:** the zellij wall through `ttyview` (zellij was not installed on the
+Mac), the race UI in a browser, and live inference. Live needs the D-030 gateway, because
+own_ip boxes can't reach the host broker.
+
 ### D-033 Open egress by default to get started (`host-up.sh --egress open`)
 **Cause of the last "hang":** the scoreboard's `go build` failed to fetch modules under
 DNS-host allows. Minimal's go sets `GOPROXY=…|direct`, so Go reaches hosts that can't be

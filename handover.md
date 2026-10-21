@@ -1,5 +1,8 @@
 # Handover: Torment Nexus (2026-10-21)
 
+**Update 2026-10-21 (D-034):** `scripts/host-up.sh` works on the Mac. The scoreboard
+and 3 lane sessions run end to end on the mock model, and failures score.
+
 **Where things stand:** the 3-lane slice runs end to end in one Minimal box, with live
 Workers AI and real faults, and it is finding real bugs. The next milestone is running
 lanes as real Minimal sessions across several microVMs from the Mac. That is blocked on
