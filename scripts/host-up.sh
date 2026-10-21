@@ -86,11 +86,21 @@ bg() {
     echo $! > "$STATE/$name.pid"
 }
 wait_for() {  # wait_for <seconds> <description> <command...>
+    # Prints progress every 10 s. If $ALIVE is set (a shell command), it is checked on
+    # each progress tick and the wait fails early once it reports the job is gone.
     local secs=$1 what=$2; shift 2
     [ "$DRY" = 1 ] && { say "(dry run) would wait up to ${secs}s for $what"; return 0; }
-    local end=$((SECONDS + secs))
+    local start=$SECONDS end=$((SECONDS + secs)) next=$((SECONDS + 10))
     until "$@"; do
         [ $SECONDS -lt $end ] || return 1
+        if [ $SECONDS -ge $next ]; then
+            next=$((SECONDS + 10))
+            say "waiting for $what ($((SECONDS - start))s of ${secs}s)"
+            if [ -n "${ALIVE:-}" ] && ! sh -c "$ALIVE" >/dev/null 2>&1; then
+                say "the job behind '$what' is no longer running"
+                return 1
+            fi
+        fi
         sleep 2
     done
 }
@@ -205,7 +215,9 @@ else
     bg "run-$SB" min session run "$SB" scoreboard
 fi
 # The first start builds Go modules from proxy.golang.org; give it a few minutes.
-if ! wait_for 300 "the scoreboard on :8080 in $SB" probe "$SB" 'curl -sf -m 3 http://127.0.0.1:8080/api/state'; then
+# [s]coreboard: the regex matches the job but not the probing shell's own command line.
+if ! ALIVE="min session exec '$SB' 'pgrep -f [s]coreboard'" \
+    wait_for 300 "the scoreboard on :8080 in $SB" probe "$SB" 'curl -sf -m 3 http://127.0.0.1:8080/api/state'; then
     min session exec "$SB" 'tail -n 30 $HOME/.nexus/scoreboard.log' >&2 || cat "$STATE/run-$SB.log" >&2 || true
     die "scoreboard did not answer on 127.0.0.1:8080 inside $SB within 300s"
 fi
