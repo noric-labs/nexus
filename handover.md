@@ -142,3 +142,31 @@ scripts/host-down.sh                       # tear down
 - gominimal/inbox#1154: egress presets, modelled on gh-aw network permissions.
 - gominimal/inbox#1155: an egress audit mode that suggests a least-privilege allow list.
 - gominimal/pkgs#965: bump `pi` to 1.3.0. Drop `pi-next` once it merges.
+
+### Drafted for the inbox, not yet filed
+
+1. **Comment on #1151, sideload docs:**
+   - **Updating an upstream package from a sideload isn't documented.** Reusing the name
+     fails with `package 'pi' already exists`, so we shipped `pi-next`.
+   - **`min check` inside a sandbox ignores the cwd's `minimal.toml`.** It passed a
+     deliberately broken copy.
+   - **Where sideload packages apply isn't documented.** They work in
+     `[tasks.*].packages` and `[session].packages`, but `min add` and `min materialize`
+     report "no such package".
+2. **New bug: `min session exec` leaks daemon sockets into user commands.**
+   - Evidence: a command run via `exec` holds `socket:` fds 16, 39, 48 and 58, from
+     `ls -l /proc/<pid>/fd` in the scoreboard session on 2026-10-21. Looks like CLOEXEC
+     is missing.
+   - Background jobs inherit them. That's a hygiene and potential security issue, and it
+     can keep the exec channel open.
+   - Workaround: `scripts/detach.py` closes fds 3 and up.
+3. **No `ps`/`pgrep` in session boxes.** `base` has no procps. Document it, or add
+   `procps-ng` to the default session tools.
+4. **Docs inconsistency on lifecycle hooks.**
+   - `concepts/sessions` says hooks are inert in the current release: project
+     `[session]` hooks are composed but never executed, and loadout hooks are excluded.
+   - `reference/loadouts` describes `on_activate`, `on_destroy`, `on_attach` and
+     `on_detach` as running, with `on_activate` failures failing activation and 60–300 s
+     timeouts.
+   - Our `lane/loadout` hook never ran, so `lane.sh` installs pi itself.
+   - Ask: mark the loadout reference as not yet active, or ship hooks.
