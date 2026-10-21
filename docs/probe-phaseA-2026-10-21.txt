@@ -1,0 +1,71 @@
+probe: LIVE  target=http://100.64.255.254:8899/workers-ai/v1
+  models: @cf/qwen/qwen3-30b-a3b-fp8, @cf/zai-org/glm-4.7-flash, @cf/google/gemma-4-26b-a4b-it, @cf/openai/gpt-oss-20b
+  steps: 60,120,240,300,360 req/min per model, 300s each; modes: A1,A2; max wall time ~2.1 h
+  planned requests (if no step trips): 43200 (hard cap 45000)
+  est. spend upper bound: 216.0M input + 8.64M output tokens = $25.08 at plan prices
+  jsonl: ../.build/probe/phaseA.jsonl
+mode model                              target  sent/m    ok/m   429%  5xx  err    p50s    p95s valid%  keys  tokIn tokOut   $/hour  verdict
+A1   @cf/qwen/qwen3-30b-a3b-fp8             60    61.7    61.7   0.00    0    0    0.59    0.92    0.0  0.00   5732    25     1.11  ok
+A1   @cf/qwen/qwen3-30b-a3b-fp8            120   123.4   123.4   0.00    0    0    0.50    0.82    0.0  0.00   5733    23     2.22  ok
+A1   @cf/qwen/qwen3-30b-a3b-fp8            240   240.3   236.9   0.00    0   17    0.49    0.74    0.0  0.00   5739    24     4.27  ok
+A1   @cf/qwen/qwen3-30b-a3b-fp8            300   292.7   289.7   0.00    0   15    0.50    0.77    0.0  0.00   5742    24     5.23  ok
+A1   @cf/qwen/qwen3-30b-a3b-fp8            360   350.7   344.3   0.00    0   32    0.49    0.76    0.0  0.00   5747    23     6.22  ok
+A1   @cf/zai-org/glm-4.7-flash              60    58.6    58.4   0.00    0    1    0.97    5.99    4.1  2.00   5431    10     1.16  p95 5.99s > 5s
+     stop @cf/zai-org/glm-4.7-flash at 60 req/min: p95 5.99s > 5s
+A1   @cf/google/gemma-4-26b-a4b-it          60    61.1    60.1   0.00    0    5    1.97    5.76   73.3 26.09   5959   102     2.26  p95 5.76s > 5s
+     stop @cf/google/gemma-4-26b-a4b-it at 60 req/min: p95 5.76s > 5s
+A1   @cf/openai/gpt-oss-20b                 60    59.2    58.4   0.00    4    0    1.27    2.27    0.0  0.00   5417    72     3.87  ok
+A1   @cf/openai/gpt-oss-20b                120   122.0   119.8   0.00   11    0    1.02    2.08    0.0  0.00   5408    70     7.92  ok
+A1   @cf/openai/gpt-oss-20b                240   223.1   219.3   0.00   11    8    0.90    1.84    0.0  0.00   5407    73    14.52  ok
+A1   @cf/openai/gpt-oss-20b                300   287.4   276.8   0.00   28   25    0.85    1.80    0.0  0.00   5407    74    18.33  ok
+A1   @cf/openai/gpt-oss-20b                360   361.8   352.0   0.00   29   20    0.86    1.80    0.0  0.00   5409    72    23.30  ok
+A2   @cf/qwen/qwen3-30b-a3b-fp8             60    59.1    58.1   0.00    0    5    0.57    0.93    0.0  0.00   5747    25     1.05  ok
+A2   @cf/zai-org/glm-4.7-flash              60    61.1    60.3   0.00    0    4    0.83   15.67    2.3  2.40   5427    11     1.19  p95 15.67s > 5s
+A2   @cf/google/gemma-4-26b-a4b-it          60    61.3    60.7   0.00    0    3    1.37    7.56   79.5 22.94   5946    88     2.26  p95 7.56s > 5s
+A2   @cf/openai/gpt-oss-20b                 60    60.3    58.5   0.00    7    2    0.83    1.76    0.0  0.00   5412    72     3.87  ok
+     stop @cf/zai-org/glm-4.7-flash at 60 req/min: p95 15.67s > 5s
+     stop @cf/google/gemma-4-26b-a4b-it at 60 req/min: p95 7.56s > 5s
+A2   @cf/qwen/qwen3-30b-a3b-fp8            120   122.6   122.2   0.00    0    2    0.51    0.81    0.0  0.00   5744    24     2.21  ok
+A2   @cf/openai/gpt-oss-20b                120   116.2   113.4   0.00   10    4    0.83    1.80    0.0  0.00   5410    72     7.51  ok
+A2   @cf/qwen/qwen3-30b-a3b-fp8            240   246.2   239.0   0.00    0   36    0.51    0.86    0.0  0.00   5743    23     4.31  ok
+A2   @cf/openai/gpt-oss-20b                240   239.4   227.6   0.00   26   33    0.89    2.08    0.0  0.00   5405    72    15.06  ok
+A2   @cf/qwen/qwen3-30b-a3b-fp8            300   313.7   309.9   0.00    0   19    0.51    0.73    0.0  0.00   5744    22     5.58  ok
+A2   @cf/openai/gpt-oss-20b                300   309.5   304.1   0.00   13   14    0.86    1.75    0.1  1.00   5410    71    20.13  ok
+A2   @cf/qwen/qwen3-30b-a3b-fp8            360   355.2   350.6   0.00    0   23    0.53    0.92    0.0  0.00   5742    24     6.33  ok
+A2   @cf/openai/gpt-oss-20b                360   353.2   341.4   0.00   31   28    0.92    2.21    0.0  0.00   5408    72    22.60  ok
+
+== Summary per step ==
+mode model                              target  sent/m    ok/m   429%  5xx  err    p50s    p95s valid%  keys  tokIn tokOut   $/hour  verdict
+A1   @cf/qwen/qwen3-30b-a3b-fp8             60    61.7    61.7   0.00    0    0    0.59    0.92    0.0  0.00   5732    25     1.11  ok
+A1   @cf/qwen/qwen3-30b-a3b-fp8            120   123.4   123.4   0.00    0    0    0.50    0.82    0.0  0.00   5733    23     2.22  ok
+A1   @cf/qwen/qwen3-30b-a3b-fp8            240   240.3   236.9   0.00    0   17    0.49    0.74    0.0  0.00   5739    24     4.27  ok
+A1   @cf/qwen/qwen3-30b-a3b-fp8            300   292.7   289.7   0.00    0   15    0.50    0.77    0.0  0.00   5742    24     5.23  ok
+A1   @cf/qwen/qwen3-30b-a3b-fp8            360   350.7   344.3   0.00    0   32    0.49    0.76    0.0  0.00   5747    23     6.22  ok
+A1   @cf/zai-org/glm-4.7-flash              60    58.6    58.4   0.00    0    1    0.97    5.99    4.1  2.00   5431    10     1.16  p95 5.99s > 5s
+A1   @cf/google/gemma-4-26b-a4b-it          60    61.1    60.1   0.00    0    5    1.97    5.76   73.3 26.09   5959   102     2.26  p95 5.76s > 5s
+A1   @cf/openai/gpt-oss-20b                 60    59.2    58.4   0.00    4    0    1.27    2.27    0.0  0.00   5417    72     3.87  ok
+A1   @cf/openai/gpt-oss-20b                120   122.0   119.8   0.00   11    0    1.02    2.08    0.0  0.00   5408    70     7.92  ok
+A1   @cf/openai/gpt-oss-20b                240   223.1   219.3   0.00   11    8    0.90    1.84    0.0  0.00   5407    73    14.52  ok
+A1   @cf/openai/gpt-oss-20b                300   287.4   276.8   0.00   28   25    0.85    1.80    0.0  0.00   5407    74    18.33  ok
+A1   @cf/openai/gpt-oss-20b                360   361.8   352.0   0.00   29   20    0.86    1.80    0.0  0.00   5409    72    23.30  ok
+A2   @cf/qwen/qwen3-30b-a3b-fp8             60    59.1    58.1   0.00    0    5    0.57    0.93    0.0  0.00   5747    25     1.05  ok
+A2   @cf/zai-org/glm-4.7-flash              60    61.1    60.3   0.00    0    4    0.83   15.67    2.3  2.40   5427    11     1.19  p95 15.67s > 5s
+A2   @cf/google/gemma-4-26b-a4b-it          60    61.3    60.7   0.00    0    3    1.37    7.56   79.5 22.94   5946    88     2.26  p95 7.56s > 5s
+A2   @cf/openai/gpt-oss-20b                 60    60.3    58.5   0.00    7    2    0.83    1.76    0.0  0.00   5412    72     3.87  ok
+A2   @cf/qwen/qwen3-30b-a3b-fp8            120   122.6   122.2   0.00    0    2    0.51    0.81    0.0  0.00   5744    24     2.21  ok
+A2   @cf/openai/gpt-oss-20b                120   116.2   113.4   0.00   10    4    0.83    1.80    0.0  0.00   5410    72     7.51  ok
+A2   @cf/qwen/qwen3-30b-a3b-fp8            240   246.2   239.0   0.00    0   36    0.51    0.86    0.0  0.00   5743    23     4.31  ok
+A2   @cf/openai/gpt-oss-20b                240   239.4   227.6   0.00   26   33    0.89    2.08    0.0  0.00   5405    72    15.06  ok
+A2   @cf/qwen/qwen3-30b-a3b-fp8            300   313.7   309.9   0.00    0   19    0.51    0.73    0.0  0.00   5744    22     5.58  ok
+A2   @cf/openai/gpt-oss-20b                300   309.5   304.1   0.00   13   14    0.86    1.75    0.1  1.00   5410    71    20.13  ok
+A2   @cf/qwen/qwen3-30b-a3b-fp8            360   355.2   350.6   0.00    0   23    0.53    0.92    0.0  0.00   5742    24     6.33  ok
+A2   @cf/openai/gpt-oss-20b                360   353.2   341.4   0.00   31   28    0.92    2.21    0.0  0.00   5408    72    22.60  ok
+
+== Sustainable req/min per model (highest step that passed) ==
+  @cf/qwen/qwen3-30b-a3b-fp8         A1=360  A2=360
+  @cf/zai-org/glm-4.7-flash          A1=0  A2=0
+  @cf/google/gemma-4-26b-a4b-it      A1=0  A2=0
+  @cf/openai/gpt-oss-20b             A1=360  A2=360
+  limit looks PER MODEL (running all models together did not lower any knee)
+
+sent 22687 requests; records in ../.build/probe/phaseA.jsonl

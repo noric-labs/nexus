@@ -6,6 +6,35 @@ Commits are in the git history; the research is in the
 
 ## 2026-10-21
 
+### D-027 Phase A results: no rate limit found up to 360 req/min per model
+22,687 live requests, **$15.20 actual** (qwen3 $3.21, gpt-oss $11.42, glm $0.20, gemma
+$0.38). The full table is in `docs/probe-phaseA-2026-10-21.txt`.
+
+**Rate limits:**
+- No 429s at any step, including A2: about 840 req/min across the account with qwen3 and
+  gpt-oss each at 360.
+- The limit looks per model, and the ceiling is above what we tested.
+
+**Per model:**
+
+| Model | Throughput | p95 latency | Errors | Tool calls |
+| --- | --- | --- | --- | --- |
+| qwen3 | 360 req/min | about 0.8 s | about 1% client timeouts (hung requests, see D-017) | needs toolfix |
+| gpt-oss | 360 req/min | about 2 s | 3–8% 5xx at higher rates | needs toolfix |
+| GLM | stopped at step 1 (60 req/min) | 6 s (A1), 15.7 s (A2) | — | — |
+| Gemma | stopped at step 1 (60 req/min) | 5.8 s (A1), 7.6 s (A2) | — | 73–80% valid |
+
+GLM and Gemma were stopped by the p95 > 5 s rule, not by rate limits. Their p50 stayed
+at 1–2 s; the slow tail is what tripped the rule.
+
+**Implications:**
+- At 12 req/min per lane (one action per 5 s), qwen3 and gpt-oss each carry 30 or more
+  lanes. The lane count is now bounded by host capacity (phase B) and toolfix quality,
+  not by Workers AI.
+- GLM and Gemma suit a few lanes each; their 6–16 s tails slow those lanes but the stall
+  watchdog (60 s) covers them.
+- The planned "about 25 lanes per model" (D-006) is conservative.
+
 ### D-026 AFL++ fuzz lanes deferred to the user
 An attempt to delegate the M2 AFL++ fuzzing work was cut off by a safety classifier
 before it started, and nothing was written. The item stays open until the user scopes it.
