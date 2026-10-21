@@ -140,3 +140,12 @@ score(lane, heat) = Σ weight[type] × 0.5^(n−1)
   replayed.
 - **Status codes:** `POST /events` returns 400 only when no line is valid.
   `POST /lanes/{id}/screen` and `POST /wall/focus` return 202.
+
+## Sanitizer lanes
+
+- Always set `log_path` in `ASAN_OPTIONS` and `UBSAN_OPTIONS`. Without it, reports go to
+  stderr and corrupt the tmux screen.
+- `crawl-asan` emits about 11 UBSan reports before the first turn, from `worley.cc`,
+  `skills.cc`, `enum.h` and sqlite. Treat them as baseline stack hashes that score 0.
+- Put `llvm-symbolizer` on PATH, or set `ASAN_SYMBOLIZER_PATH`, so that frames symbolize to
+  `func@file` for `stack_hash`.
