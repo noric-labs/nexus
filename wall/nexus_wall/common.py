@@ -38,7 +38,11 @@ def fit_grid(n: int, grid: tuple[int, int]) -> tuple[int, int]:
 DEFAULT_CMD = "min session exec {session} 'exec python3 /workbench/lane/ttyview.py'"
 DEFAULT_SESSION_FMT = "lane-{num}"
 # Re-attach loop: recycled lanes come back without zellij having to re-run anything.
-RETRY_SH = 'while :; do {cmd}; printf "\\r\\n\\033[2m[{lane}: detached, retrying in {delay}s]\\033[0m\\r\\n"; sleep {delay}; done'
+# The view is read-only, but zellij answers the game's terminal queries (tmux's CSI 18t/14t,
+# colour queries) on the pane's input; with the pane tty in cooked mode those replies are
+# echoed onto the screen. `stty -echo -icanon` keeps them off it.
+NO_ECHO = "stty -echo -icanon 2>/dev/null; "
+RETRY_SH = NO_ECHO + 'while :; do {cmd}; printf "\\r\\n\\033[2m[{lane}: detached, retrying in {delay}s]\\033[0m\\r\\n"; sleep {delay}; done'
 HOT_TAB = "Hot"
 SEP = " · "  # " · "
 
@@ -113,7 +117,7 @@ def pane_command(lane: Lane, cmd_tmpl: str, session_fmt: str, retry: float) -> l
     """argv for the pane: sh -c '<re-attach loop around the templated command>'."""
     cmd = lane_command(lane, cmd_tmpl, session_fmt)
     if retry <= 0:
-        return ["sh", "-c", cmd]
+        return ["sh", "-c", NO_ECHO + cmd]
     return ["sh", "-c", RETRY_SH.format(cmd=cmd, lane=lane.id.replace('"', ""), delay=retry)]
 
 

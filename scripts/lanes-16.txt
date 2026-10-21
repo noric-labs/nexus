@@ -1,0 +1,22 @@
+# 16 lanes, evenly spread: 8 games x 2 lanes, 8 qwen3 + 8 GLM (the D-029 defaults).
+# Each game gets two faults it is sensitive to, one per model. Malloc faults only go to
+# non-ASan builds (D-010). ASan builds (brogue, dcss, bastet) get the non-malloc faults.
+# No winch-storm for Brogue: below 100x34 it only shows a "resize your terminal" screen.
+#   scripts/host-up.sh --live -n 16 --lanes scripts/lanes-16.txt
+# id      game         fault              seed  model
+l-001     frotz-zork1  strace-eintr-read  101   @cf/qwen/qwen3-30b-a3b-fp8
+l-002     frotz-zork1  io-save-5pct       102   @cf/zai-org/glm-4.7-flash
+l-003     brogue-rel   malloc-20pct       103   @cf/zai-org/glm-4.7-flash
+l-004     brogue-rel   malloc-1pct        104   @cf/qwen/qwen3-30b-a3b-fp8
+l-005     brogue       keystorm           105   @cf/qwen/qwen3-30b-a3b-fp8
+l-006     brogue       time-warp          106   @cf/zai-org/glm-4.7-flash
+l-007     greed        rlimit-tight       107   @cf/zai-org/glm-4.7-flash
+l-008     greed        malloc-20pct       108   @cf/qwen/qwen3-30b-a3b-fp8
+l-009     dcss         keystorm           109   @cf/qwen/qwen3-30b-a3b-fp8
+l-010     dcss         time-warp          110   @cf/zai-org/glm-4.7-flash
+l-011     nsnake-rel   winch-storm        111   @cf/zai-org/glm-4.7-flash
+l-012     nsnake-rel   malloc-20pct       112   @cf/qwen/qwen3-30b-a3b-fp8
+l-013     pacman-rel   malloc-20pct       113   @cf/qwen/qwen3-30b-a3b-fp8
+l-014     pacman-rel   winch-storm        114   @cf/zai-org/glm-4.7-flash
+l-015     bastet       winch-storm        115   @cf/zai-org/glm-4.7-flash
+l-016     bastet       keystorm           116   @cf/qwen/qwen3-30b-a3b-fp8

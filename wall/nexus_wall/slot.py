@@ -39,6 +39,8 @@ def stop(p: subprocess.Popen | None) -> None:
 
 def main(argv=None):
     args = argv if argv is not None else sys.argv[1:]
+    # Keep zellij's replies to terminal queries off the screen (see common.NO_ECHO).
+    subprocess.run(["stty", "-echo", "-icanon"], stderr=subprocess.DEVNULL)
     if not args:
         sys.exit("usage: wall-slot SLOT_FILE [RETRY_SECONDS]")
     path, retry = args[0], float(args[1]) if len(args) > 1 else 3.0
