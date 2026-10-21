@@ -1,0 +1,5 @@
+# Lanes started by scripts/host-up.sh: one Minimal session per line, named after the lane id.
+# id      game         fault        seed  [model]
+l-001     frotz-zork1  winch-storm  101
+l-002     brogue-rel   malloc-1pct  202
+l-003     greed        none         303

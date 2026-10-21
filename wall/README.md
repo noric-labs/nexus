@@ -56,14 +56,13 @@ project uses only the Python stdlib):
 The default is:
 
 ```
-min session exec {session} -- tmux attach -r -t game
+min session exec {session} 'exec python3 /workbench/lane/ttyview.py'
 ```
 
-[cli-min](https://minimal.dev/docs/reference/cli-min) documents the form as
-`min session exec <SESSION> <COMMAND>...`: one argument is run as a shell command, and
-several arguments are passed as argv. The docs don't mention `--`. With a clap-style
-parser, `--` only stops `min` from parsing `-r` and `-t` as its own flags. If your `min`
-rejects it, drop it with `--cmd 'min session exec {session} tmux attach -r -t game'`.
+`min session exec` gives the command no terminal, so a plain `tmux attach -r` fails
+there with "not a terminal". `lane/ttyview.py` opens a pty inside the box and streams the
+read-only attach through it. This is the command `scripts/host-up.sh` passes. For a local
+demo without Minimal, use `--cmd 'tmux -L {session} attach -r -t game'`.
 
 Keep the template to a single command. `wall-slot` runs it with `exec`, so stopping the
 slot stops the attach client.

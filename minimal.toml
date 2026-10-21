@@ -1,0 +1,63 @@
+# Torment Nexus. Packages come from gominimal/pkgs plus our sideload, noric-labs/torment-pkgs
+# (libfiu, libfaketime, torment-seed, frotz, zork-stories, brogue-ce, greed, dcss).
+# Sideload packages cannot be added with `min add`; list them in `packages` by hand.
+#
+# Host flow (scripts/host-up.sh, see scripts/README.md): one session per lane plus one
+# scoreboard session, all activated from this checkout so the repo lands at /workbench.
+
+[upstream]
+repo = "https://github.com/gominimal/pkgs"
+branch = "main"
+locked_commit = "4f163b52467e3dc4b2713ded70f9249b6862b3a2"
+
+[[upstream.sideload]]
+repo = "https://github.com/noric-labs/torment-pkgs"
+branch = "main"
+locked_commit = "77e17ab9a711cd0f0da31b9aef97a98ac31ea88e"
+
+[defaults]
+state_key = "nexus"
+
+# Every session activated from this checkout (the scoreboard and each lane) gets these.
+# host-up.sh starts scripts/scoreboard.sh and scripts/lane.sh in the session's own box with
+# `min session exec`, so the session needs what the tasks below need. `go` is only used by
+# the scoreboard session; a project has one [session] block, so lanes carry it too
+# (hardlinked from the store, so the cost is small).
+[session]
+packages = ["base", "bash", "coreutils", "curl", "python", "node", "tmux", "go",
+            "frotz", "zork-stories", "brogue-ce", "greed", "libfiu", "torment-seed"]
+
+# Scoreboard on 0.0.0.0:8080.
+#   min task run scoreboard --heat 3m --pit 15s     (args; `min session run` uses the defaults)
+[tasks.scoreboard]
+description = "Build and run the Torment Nexus scoreboard on 0.0.0.0:8080"
+packages = ["base", "bash", "coreutils", "go"]
+args.heat = { type = "string", help = "heat length (Go duration)", default = "15m" }
+args.pit = { type = "string", help = "pit length (Go duration)", default = "1m" }
+bash = "bash scripts/scoreboard.sh --heat '%{heat}' --pit '%{pit}'"
+
+# `bash` (not `exec`) so the quoted, possibly empty %{args} survive as single words.
+# One lane: harness + pi agent. Config comes from $HOME/.nexus/lane.env (written by
+# host-up.sh), then from these args; an empty arg means "keep the env file's value".
+#   min task run lane --id l-001 --game greed --mock 1 --seconds 120 --scoreboard http://…
+[tasks.lane]
+description = "One Torment Nexus lane: nexus-lane harness + pi agent (NEXUS_* from lane.env or args)"
+packages = ["base", "bash", "coreutils", "curl", "python", "node", "tmux",
+            "frotz", "zork-stories", "brogue-ce", "greed", "libfiu", "torment-seed"]
+args.id = { type = "string", help = "lane id, e.g. l-001", default = "" }
+args.game = { type = "string", help = "frotz-zork1 | brogue | brogue-rel | greed | dcss", default = "" }
+args.fault = { type = "string", help = "fault profile", default = "" }
+args.seed = { type = "string", help = "u64 seed", default = "" }
+args.model = { type = "string", help = "Workers AI model id", default = "" }
+args.scoreboard = { type = "string", help = "scoreboard base URL", default = "" }
+args.mock = { type = "string", help = "1 = in-box mock model instead of the broker", default = "" }
+args.seconds = { type = "string", help = "stop after N seconds (0 = run until stopped)", default = "" }
+bash = "bash scripts/lane.sh --id '%{id}' --game '%{game}' --fault '%{fault}' --seed '%{seed}' --model '%{model}' --scoreboard '%{scoreboard}' --mock '%{mock}' --seconds '%{seconds}'"
+
+# M1 local slice: scoreboard + mock model + 3 lanes in one box (scripts/README.md).
+# Builds .build/scoreboard and .build/pi first, so a fresh checkout works.
+[tasks.slice]
+description = "M1 local slice: scoreboard, mock model and 3 lanes in one box"
+packages = ["base", "bash", "coreutils", "curl", "python", "node", "tmux", "go",
+            "frotz", "zork-stories", "brogue-ce", "greed", "libfiu", "torment-seed"]
+bash = "(cd scoreboard && CGO_ENABLED=0 go build -o ../.build/scoreboard .) && { test -x .build/pi/node_modules/.bin/pi || npm install --prefix .build/pi --no-fund --no-audit @earendil-works/pi-coding-agent; } && bash scripts/slice.sh"

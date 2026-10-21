@@ -12,6 +12,7 @@ model config, the driver, a mock inference server, and the `nexus-lane` Minimal 
 | `prompts/` | `system.md` plus one goal prompt per `NEXUS_GAME` (`default.md` otherwise) |
 | `mock_openai.py` | OpenAI-compatible mock that answers with `send_keys`/`screen` tool calls |
 | `loadout/` | the `nexus-lane` loadout (`loadout.toml`, `hooks/on-activate.sh`, `vendor-pi.sh`) |
+| `ttyview.py` | read-only view of the lane's `game` tmux session through a pty, for the wall (see below) |
 
 ## How the agent plays
 
@@ -86,61 +87,72 @@ every Nth reply plain text, to exercise the re-prompt path.
 
 ## Installing pi
 
-The loadout's `on_activate` installs pi 1.3.0 (`@earendil-works/pi-coding-agent`, Node >= 22.19)
-into `/home/.local/share/nexus-pi`:
+pi 1.3.0 (`@earendil-works/pi-coding-agent`, Node >= 22.19) goes into
+`/home/.local/share/nexus-pi`. `scripts/lane.sh` installs it on first start:
 
-1. from `vendor/pi.tgz` if the loadout ships one (run `lane/loadout/vendor-pi.sh` once on the
-   host: ~25 MB, extracts in under a second, no registry egress needed), else
+1. from `$HOME/.cache/nexus-lane/pi.tgz`, which the loadout patches in when it ships
+   `vendor/pi.tgz` (run `lane/loadout/vendor-pi.sh` once on the host: ~25 MB, extracts in under a
+   second, no registry egress needed), else
 2. `npm install --prefix … @earendil-works/pi-coding-agent@$NEXUS_PI_VERSION` (~10 s, needs
-   egress to `registry.npmjs.org`).
+   egress to `registry.npmjs.org`; `scripts/host-up.sh` allows it when no tarball is vendored).
 
-## Host commands (M1: scoreboard + 3 lanes)
+The loadout's `on_activate` hook does the same, but the Minimal docs say loadout hooks are not run
+in the current release ([concepts/sessions](https://minimal.dev/docs/concepts/sessions): "hooks
+declared in loadouts are excluded from composition entirely"), so `lane.sh` does not rely on it.
 
-Install the loadout. Copy it rather than symlinking it, because Minimal rejects hook scripts
-reached through symlinks:
+## Running lanes as Minimal sessions
 
-```sh
-cd ~/src/nexus
-lane/loadout/vendor-pi.sh                              # optional, recommended
-mkdir -p ~/.config/minimal/loadouts
-rm -rf ~/.config/minimal/loadouts/nexus-lane
-cp -R lane/loadout ~/.config/minimal/loadouts/nexus-lane
-```
-
-Scoreboard session. It gets its own IP and a static ingress for port 8080, and the host
-reaches it through a forward:
+`scripts/host-up.sh` does all of this from the Mac; the steps and prerequisites are in
+[`scripts/README.md`](../scripts/README.md#running-on-minimal-sessions). Per lane it runs:
 
 ```sh
-min session activate scoreboard --name scoreboard --network own_ip --ingress 8080:8080
-min session exec scoreboard 'cd /workbench && ./run.sh'   # however scoreboard/ starts; listens on :8080
-min net forward scoreboard 8080:8080                      # race UI at http://localhost:8080
+min session activate --name l-001 --no-prompt --network own_ip --loadout nexus-lane \
+    --allow-dns-hosts scoreboard.min.internal [--allow-dns-hosts registry.npmjs.org] ~/src/nexus
+min session exec l-001 'mkdir -p $HOME/.nexus && printf %s\\n NEXUS_LANE_ID=l-001 … > $HOME/.nexus/lane.env'
+min session exec l-001 'cd /workbench && setsid nohup bash scripts/lane.sh >$HOME/.nexus/lane.log 2>&1 </dev/null &'
 ```
 
-Three lanes. Each lane gets its own IP and may reach only the scoreboard by DNS and the broker.
-Add `--allow-dns-hosts registry.npmjs.org` if `vendor/pi.tgz` is not shipped:
+- The checkout is the session path, so the repo is at `/workbench` and the lane code at
+  `/workbench/lane`.
+- **Lane config** is `$HOME/.nexus/lane.env` (`NEXUS_LANE_ID`, `NEXUS_GAME`, `NEXUS_FAULT`,
+  `NEXUS_SEED`, `NEXUS_MODEL`, `NEXUS_SCOREBOARD_URL`, `NEXUS_MOCK`), not activation-time env:
+  `min session run` forwards no client environment
+  ([reference/tasks](https://minimal.dev/docs/reference/tasks#env_vars)), and a file survives a
+  restart of the lane inside the session.
+- `scripts/lane.sh` is the `lane` task's entry point too. It starts the harness, waits for tmux
+  session `game`, then runs `lane/agent.sh`. It ends when the harness ends, and SIGTERM stops
+  both, so `lane_end` is sent. `NEXUS_MOCK=1` runs `mock_openai.py` in the box instead of using the
+  broker; `--live` on `host-up.sh` adds `--loadout broker --allow-subnets 100.64.255.254/32`.
+- **Why `setsid nohup … &`:** `min session exec` returns when its command exits, and it ends the
+  command's whole process group if the client goes away first. `setsid` moves the lane into its
+  own group, so it outlives the exec ([cli-min, "Backgrounding a
+  command"](https://minimal.dev/docs/reference/cli-min#session-exec)).
+- **Why not `min session run l-001 lane`:** a task in an `own_ip` session runs in a second box
+  beside the session's box, and on a Mac that box has no outbound reach yet
+  ([reference/tasks#networking](https://minimal.dev/docs/reference/tasks#networking)). Use
+  `host-up.sh --via run --network host_ip` for that path.
+- **tmux socket:** `lane.sh` sets `TMUX_TMPDIR=$HOME/.nexus/tmux`, so the harness, the agent and
+  `ttyview.py` find the same server in any exec or task of the session.
+
+Useful commands:
 
 ```sh
-lane() {  # lane <id> <game> <model>
-  NEXUS_LANE_ID=$1 NEXUS_GAME=$2 NEXUS_MODEL=$3 NEXUS_FAULT=none NEXUS_SEED=$RANDOM \
-  min session activate . --name "$1" \
-      --loadout broker --loadout nexus-lane \
-      --network own_ip \
-      --allow-dns-hosts scoreboard.min.internal \
-      --allow-subnets 100.64.255.254/32
-}
-lane l-001 frotz-zork1 @cf/qwen/qwen3-30b-a3b-fp8
-lane l-002 brogue      @cf/zai-org/glm-4.7-flash
-lane l-003 greed       @cf/openai/gpt-oss-20b
+min session exec l-001 'tail -n 40 $HOME/.nexus/lane.log $HOME/out/harness.log $HOME/out/agent/agent.log'
+min session exec l-001 'cat $HOME/out/agent/stats.json'
+min session exec l-001 'kill $(cat $HOME/.nexus/lane.pid)'          # stop the lane (lane_end is sent)
+min session exec l-001 'cd /workbench && setsid nohup bash scripts/lane.sh >$HOME/.nexus/lane.log 2>&1 </dev/null &'
+min session destroy -f l-001
 ```
 
-Run the commands from the nexus checkout, so that the repo is synced to `/workbench` and
-`NEXUS_LANE_DIR=/workbench/lane`. The harness launcher (`harness/`) starts the game in tmux
-session `game` and then `lane/agent.sh`. To start the agent by hand in a lane whose game is
-already running:
+## Watching a lane (`ttyview.py`)
+
+`min session exec` is non-interactive: it relays stdout and stderr but gives the command no
+terminal, and `tmux attach` then exits with `open terminal failed: not a terminal`.
+`ttyview.py` opens a pty in the box, sized to the game window, runs `tmux attach -r -t game` on
+it, and streams the pty's output to stdout. Your terminal renders it as a read-only attach:
 
 ```sh
-min session exec l-001 'cd /workbench && nohup lane/agent.sh >/home/out/agent/agent.log 2>&1 &'
-min session exec l-001 'cat /home/out/agent/stats.json'
+min session exec l-001 'exec python3 /workbench/lane/ttyview.py'
 ```
 
-Destroy a lane (the launcher brings it back) with `min session destroy -f l-002`.
+The wall uses this as its pane command (`wall-gen --cmd`). Keystrokes are not forwarded.

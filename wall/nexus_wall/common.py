@@ -16,7 +16,9 @@ GRIDS = {(80, 24): (8, 8), (100, 34): (6, 6)}  # (cols, rows) of panes per page
 
 # Default pane command. `min session exec` runs on the Mac host; `{session}` is the
 # Minimal session name of the lane. Override with --cmd (see README).
-DEFAULT_CMD = "min session exec {session} -- tmux attach -r -t game"
+# session exec gives no TTY, so tmux attach fails there; lane/ttyview.py makes a pty in
+# the box and streams the read-only attach.
+DEFAULT_CMD = "min session exec {session} 'exec python3 /workbench/lane/ttyview.py'"
 DEFAULT_SESSION_FMT = "lane-{num}"
 # Re-attach loop: recycled lanes come back without zellij having to re-run anything.
 RETRY_SH = 'while :; do {cmd}; printf "\\r\\n\\033[2m[{lane}: detached, retrying in {delay}s]\\033[0m\\r\\n"; sleep {delay}; done'
