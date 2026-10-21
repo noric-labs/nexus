@@ -27,6 +27,9 @@ from .tmux import Tmux, TmuxError, frame_hash
 
 log = logging.getLogger("nexus.lane")
 
+# Signals a keystroke can deliver to the game (^C, ^\); reported as agent_error, not crash.
+KEYBOARD_SIGNALS = {2, 3}
+
 
 class ScreenPoster:
     """Posts the newest frame to /lanes/{id}/screen from a background thread, so a slow
@@ -338,7 +341,13 @@ class Lane:
         if st.get("exec_error"):
             raise ConfigError(f"cannot start game: {st['exec_error']}")
         crash = classify_exit(st, game.ok_exit_codes)
-        if crash and not fatal:
+        if crash and not fatal and crash[1] in KEYBOARD_SIGNALS:
+            # ^C / ^\ typed by the agent: not a software failure.
+            detail, sig, code = crash
+            self.failure("agent_error", run_dir, detail=f"game interrupted by {detail}",
+                         signal=sig, exit_code=code)
+            why = "interrupted"
+        elif crash and not fatal:
             detail, sig, code = crash
             self.failure("crash", run_dir, detail=detail, signal=sig, exit_code=code)
             why = "crash"

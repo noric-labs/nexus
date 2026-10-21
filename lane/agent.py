@@ -23,7 +23,7 @@ from datetime import datetime, timezone
 
 LANE = os.path.dirname(os.path.abspath(__file__))
 env = os.environ
-OUT = env.get("NEXUS_OUT", "/out")
+OUT = env.get("NEXUS_OUT", "/home/out")
 AGENT_DIR = os.path.join(OUT, "agent")
 STATS = env.get("NEXUS_AGENT_STATS", os.path.join(AGENT_DIR, "stats.json"))
 EVENTS = os.path.join(AGENT_DIR, "events.ndjson")

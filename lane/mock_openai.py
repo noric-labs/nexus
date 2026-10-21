@@ -25,7 +25,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 KEYS = [
     "hjkl", "jjjj", "llll<Enter>", "<Up><Up><Right>", "<Down><Down><Left>", "look<Enter>",
     "north<Enter>", "open mailbox<Enter>", "inventory<Enter>", "i<Esc>", "<Esc>", "s",
-    "yes<Enter>", "<Enter>", "x<Enter>", "hello world<Enter>", "<Tab><Enter>", "<C-c>",
+    "yes<Enter>", "<Enter>", "x<Enter>", "hello world<Enter>", "<Tab><Enter>",
     "12345<BSpace><BSpace><Enter>", "<Space><Space>",
 ]
 

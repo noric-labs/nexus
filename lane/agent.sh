@@ -14,7 +14,7 @@ set -eu
 
 LANE_DIR=$(cd "$(dirname "$0")" && pwd)
 
-: "${NEXUS_OUT:=/out}"
+: "${NEXUS_OUT:=/home/out}"
 : "${NEXUS_MODEL:=@cf/qwen/qwen3-30b-a3b-fp8}"
 : "${NEXUS_GAME:=}"
 : "${NEXUS_INFERENCE_URL:=http://100.64.255.254:8899/workers-ai/v1}"

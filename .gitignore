@@ -4,3 +4,4 @@
 lane/loadout/vendor/
 __pycache__/
 .venv/
+.build/

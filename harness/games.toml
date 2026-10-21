@@ -7,24 +7,32 @@
 
 [games.frotz-zork1]
 command = ["dfrotz", "-m", "-w", "80", "-h", "24", "-s", "{seed32}", "/usr/share/zork/zork1.z3"]
-version = "2.54"
+version = "2.55"
 size = [80, 24]
 
 [games.brogue]
-command = ["brogue-ce-asan", "--term", "--seed", "{seed}"]
-version = "1.14"
+command = ["brogue-ce-asan", "-t", "-s", "{seed32}", "-n"]
+version = "1.15.1"
 size = [100, 34]
 cwd = "{home}/brogue"
 sanitizer = true
 
+# Release build for allocator faults: ASan replaces malloc, so libfiu's
+# libc/mm/* points never fire under brogue-ce-asan.
+[games.brogue-rel]
+command = ["brogue-ce", "-t", "-s", "{seed32}", "-n"]
+version = "1.15.1"
+size = [100, 34]
+cwd = "{home}/brogue"
+
 [games.greed]
 command = ["greed"]
-version = "4.3"
+version = "4.5"
 size = [80, 24]
 
 [games.dcss]
-command = ["crawl-asan", "-seed", "{seed}"]
-version = "0.32"
+command = ["crawl-asan", "-seed", "{seed}", "-name", "nexus", "-species", "Minotaur", "-background", "Fighter", "-extra-opt-first", "weapon=trident"]
+version = "0.34.1"
 size = [80, 24]
 sanitizer = true
 baseline_hashes = []
