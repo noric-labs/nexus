@@ -115,3 +115,28 @@ score(lane, heat) = Σ weight[type] × 0.5^(n−1)
   stack hash use `type+detail` as the key.
 - Default weights: `sanitizer=5`, `crash=3`, `hang=2`, `visual=1`, `agent_error=0`.
 - Season points by heat finish position: 25, 18, 15, 12, 10, 8, 6, 4, 2, 1.
+
+## Scoreboard behaviours (as implemented)
+
+- **Heat ids:** formatted `h-%04d` and they continue across restarts.
+  `/api/state.heat` = `{id, seq, phase:"race"|"pit", started_at, ends_at, pit_ends_at, next_id, remaining_ms}`.
+  A lane that starts during the pit uses `next_id`.
+- **When a failure scores:** an empty `heat_id` means the current heat. A failure scores only
+  if it belongs to the current heat and arrives during the race, or during the pit with
+  `ts <= ends_at`. Anything else is stored but not scored.
+- **Decay key:** `stack_hash`, or `type|detail` when there is no hash. A stack hash shares its
+  hit count across failure types. The cluster id is `<game>/<key>`. `agent_error` is never a
+  cluster.
+- **Season points:** awarded when the pit ends, only to lanes with a score above 0. Ties are
+  broken by score, then by who reached it first, then by lane id.
+- **Heartbeats** are not stored.
+- **SSE payloads:**
+  - `failure` = the event plus `cluster, n, points, scored, new_cluster, lane_score`.
+  - `ticker` = `{kind: first_blood|new_cluster|lead_change, text, lane_id, heat_id, ts}`.
+  - `pit` = `{heat, heat_id, next_id, podium}`.
+  - `focus` = `{lane_id, ts}`.
+- **`state` events:** every connection gets a full `state` first. Later `state` deltas list
+  only the lanes that changed, but always carry complete scores and standings. They are not
+  replayed.
+- **Status codes:** `POST /events` returns 400 only when no line is valid.
+  `POST /lanes/{id}/screen` and `POST /wall/focus` return 202.
