@@ -1,0 +1,12 @@
+// zellij config for the Torment Nexus wall (pass with --config).
+// Layouts carry no tab-bar/status-bar plugins, so the screen is all lane panes.
+pane_frames true
+simplified_ui true
+default_mode "locked"        // keys go to the (read-only) pane, no zellij chrome
+show_startup_tips false
+show_release_notes false
+mouse_mode true
+session_serialization false  // the wall is regenerated, never resurrected
+pane_viewport_serialization false
+copy_on_select false
+on_force_close "quit"
