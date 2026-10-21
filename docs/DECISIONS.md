@@ -6,6 +6,21 @@ Commits are in the git history; the research is in the
 
 ## 2026-10-21
 
+### D-022 Text tool-call recovery proxy (`lane/toolfix.py`), on by default
+**Decision:** pi talks to a local proxy that forwards requests to the broker. When a reply
+has no structured `tool_calls`, the proxy rebuilds one from the text. That covers each
+shape seen in D-016: a `<tool_call>` block in content or reasoning, `functions.NAME {json}`,
+`NAME(args)`, and a bare arguments object.
+- Only tools the request declared are matched, and arguments are checked against the
+  schema.
+- It never invents a call.
+- Every recovery is logged to `toolfix.jsonl`.
+
+**Evidence (mock):** each failing shape went from 0 to about 30 actions per 15 s.
+**Pending:** a live check on qwen3, glm and gpt-oss. It waits until the phase A probe
+finishes, so live lanes don't distort the rate-limit measurements (the limits are per
+model and per account).
+
 ### D-021 New games: Bastet, nSnake and Pacman4console are packaged and build in Minimal
 All three ship a release and an ASan+UBSan build (`<game>` and `<game>-rel` in
 `games.toml`). Each is real-time, so it stresses timing and hang detection more than
