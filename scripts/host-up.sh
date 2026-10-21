@@ -331,7 +331,8 @@ Up: scoreboard session '$SB' + ${#LANES[@]} lane session(s) (scoreboard $NET, la
 Wall (wall/terminals/ has Ghostty, kitty and WezTerm configs for the 4pt grid):
   # in a fullscreen terminal that is NOT already inside zellij (use -n, not --layout:
   # zellij 0.45 --layout targets an existing session and exits with "no active session")
-  cd $ROOT/wall && zellij kill-session nexus-wall 2>/dev/null; zellij delete-session nexus-wall --force 2>/dev/null; zellij --config config.kdl -s nexus-wall -n out/wall.kdl
+  # ulimit: the wall has ~164 panes, each a pty; macOS terminals default to 256 fds
+  ulimit -n 4096; cd $ROOT/wall && zellij kill-session nexus-wall 2>/dev/null; zellij delete-session nexus-wall --force 2>/dev/null; zellij --config config.kdl -s nexus-wall -n out/wall.kdl
   # in any other terminal
   cd $ROOT/wall && uv run wall-pager --session nexus-wall --scoreboard http://localhost:$PORT --out out
 

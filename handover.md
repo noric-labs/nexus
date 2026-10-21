@@ -69,6 +69,7 @@ git pull && scripts/host-up.sh             # --dry-run, -n N, --egress open|stri
 curl -s localhost:8080/api/state | head -c 400; open http://localhost:8080
 
 # wall: a fullscreen terminal that is NOT inside zellij
+ulimit -n 4096   # ~164 panes, each a pty; the macOS default of 256 fds makes zellij panic
 cd wall && zellij kill-session nexus-wall 2>/dev/null; zellij delete-session nexus-wall --force 2>/dev/null
 zellij --config config.kdl -s nexus-wall -n out/wall.kdl
 # pager, in a second terminal
